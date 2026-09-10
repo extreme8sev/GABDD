@@ -28,102 +28,112 @@ internal sealed class TopGamesPanel : UserControl
     public void Bind(GamerLicense license)
     {
         _list.Controls.Clear();
-        var top = PlayActivity.RankByActivity(license.Profile.Games, 10);
-        if (top.Count == 0)
-        {
-            top = license.Profile.Games
-                .OrderByDescending(g => g.PlaytimeForeverMinutes)
-                .Take(10)
-                .ToList();
-        }
 
         _list.Controls.Add(new Label
         {
-            Text = "Сортировка: сначала недавняя активность (не вечные часы)",
+            Text = "Посмотри на себя",
+            Font = new Font("Segoe UI Semibold", 16f, FontStyle.Bold),
+            ForeColor = UiTheme.AccentRed,
+            AutoSize = true,
+            Margin = new Padding(4, 4, 0, 4),
+        });
+
+        _list.Controls.Add(new Label
+        {
+            Text = "Клички по пробегу: легенды, брошенные и «купил — забыл»",
             Font = UiTheme.CaptionFont,
             ForeColor = UiTheme.Caption,
             AutoSize = true,
-            Margin = new Padding(4, 0, 0, 10),
+            Margin = new Padding(4, 0, 0, 14),
         });
 
-        for (var i = 0; i < top.Count; i++)
+        var roasts = GameRoastBuilder.Build(license.Profile, take: 10);
+        if (roasts.Count == 0)
         {
-            var g = top[i];
-            var ach = license.Profile.Top10Achievements.FirstOrDefault(a => a.AppId == g.AppId);
-            var achText = ach is null
-                ? "?"
-                : ach.StatsPrivate
-                    ? "нет данных"
-                    : $"{ach.Unlocked}/{ach.Total}";
-            var cats = string.Join(" · ", GenreMapper.Map(g).OrderBy(c => c.ToString()));
-            var activity = PlayActivity.FormatLastPlayed(g) ?? "давно / нет даты";
+            _list.Controls.Add(new Label
+            {
+                Text = "Библиотека пуста — смотреть не на что.",
+                ForeColor = UiTheme.Caption,
+                AutoSize = true,
+            });
+            return;
+        }
 
-            _list.Controls.Add(CreateRow(i + 1, g, achText, cats, activity));
+        foreach (var roast in roasts)
+        {
+            var ach = license.Profile.Top10Achievements.FirstOrDefault(a => a.AppId == roast.Game.AppId);
+            var achText = ach is null
+                ? null
+                : ach.StatsPrivate
+                    ? "ачивки скрыты"
+                    : $"{ach.Unlocked}/{ach.Total} ачивок";
+            _list.Controls.Add(CreateRow(roast, achText));
         }
     }
 
-    private static Control CreateRow(
-        int index, OwnedGameInfo game, string achievements, string cats, string activity)
+    private static Control CreateRow(GameRoast roast, string? achText)
     {
         var row = new Panel
         {
-            Width = 780,
-            Height = 78,
-            Margin = new Padding(0, 0, 0, 8),
+            Width = 800,
+            Height = 88,
+            Margin = new Padding(0, 0, 0, 10),
             BackColor = Color.White,
-            Padding = new Padding(10),
+            Padding = new Padding(12, 10, 12, 10),
         };
         row.Paint += (_, e) =>
         {
             using var pen = new Pen(Color.FromArgb(210, 210, 210));
             e.Graphics.DrawRectangle(pen, 0, 0, row.Width - 1, row.Height - 1);
+            using var accent = new Pen(UiTheme.AccentRed, 3);
+            e.Graphics.DrawLine(accent, 0, 0, 0, row.Height);
         };
 
-        var idx = new Label
+        var badge = new Label
         {
-            Text = $"{index}.",
-            Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold),
-            ForeColor = UiTheme.Caption,
-            Location = new Point(10, 22),
+            Text = roast.Badge,
+            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
+            ForeColor = UiTheme.AccentRed,
+            Location = new Point(14, 8),
             AutoSize = true,
+            MaximumSize = new Size(560, 20),
         };
 
         var name = new Label
         {
-            Text = game.Name,
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
+            Text = roast.GameName,
+            Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold),
             ForeColor = UiTheme.Value,
-            Location = new Point(44, 8),
+            Location = new Point(14, 30),
             AutoSize = true,
-            MaximumSize = new Size(500, 24),
+            MaximumSize = new Size(560, 24),
+            AutoEllipsis = true,
+        };
+
+        var joke = new Label
+        {
+            Text = achText is null ? roast.Joke : $"{roast.Joke}  ·  {achText}",
+            Font = new Font("Segoe UI", 9f, FontStyle.Italic),
+            ForeColor = UiTheme.Caption,
+            Location = new Point(14, 56),
+            AutoSize = true,
+            MaximumSize = new Size(620, 22),
             AutoEllipsis = true,
         };
 
         var hours = new Label
         {
-            Text = $"{game.PlaytimeForeverMinutes / 60.0:0.#} ч",
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold),
+            Text = roast.HoursText,
+            Font = new Font("Segoe UI Semibold", 14f, FontStyle.Bold),
             ForeColor = UiTheme.OpenedBorder,
             AutoSize = true,
-            Location = new Point(650, 10),
+            Location = new Point(680, 28),
         };
 
-        var meta = new Label
-        {
-            Text =
-                $"{activity} · 14 дн.: {game.Playtime2WeeksMinutes / 60.0:0.#} ч · ачивки: {achievements} · {cats}",
-            Font = UiTheme.SmallFont,
-            ForeColor = UiTheme.Caption,
-            Location = new Point(44, 40),
-            AutoSize = true,
-            MaximumSize = new Size(700, 28),
-            AutoEllipsis = true,
-        };
-
-        row.Controls.Add(idx);
+        row.Controls.Add(badge);
         row.Controls.Add(name);
+        row.Controls.Add(joke);
         row.Controls.Add(hours);
-        row.Controls.Add(meta);
         return row;
     }
 }

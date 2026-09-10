@@ -13,7 +13,8 @@ public sealed record JokeFields(
     IReadOnlyList<string> MedicalNotes);
 
 /// <summary>
-/// Шуточные поля удостоверения — от статистики, с лёгким seed от SteamID (стабильно между запусками).
+/// Шуточные поля удостоверения в тоне Fallout Shelter: короткая deadpan-карточка предмета.
+/// Правила: 1 предложение; конкретный образ → подрыв; без канцелярита комиссии.
 /// </summary>
 public static class JokeFieldsBuilder
 {
@@ -33,10 +34,12 @@ public static class JokeFieldsBuilder
         var opened = categories.Where(c => c.Status == CategoryStatus.Opened).ToList();
         var revoked = categories.Where(c => c.Status == CategoryStatus.Revoked).ToList();
 
-        // Для характера — недавняя активность, не lifetime (иначе CS2 5-летней давности рулит всем).
         var shooterHours = PlayActivity.CategoryHoursForIdentity(profile.Games, CategoryCode.B);
         var soulsHours = PlayActivity.CategoryHoursForIdentity(profile.Games, CategoryCode.E);
         var rpgHours = PlayActivity.CategoryHoursForIdentity(profile.Games, CategoryCode.C);
+        var horrorHours = PlayActivity.CategoryHoursForIdentity(profile.Games, CategoryCode.H);
+        var mobaHours = PlayActivity.CategoryHoursForIdentity(profile.Games, CategoryCode.A);
+
         var topCat = opened
             .OrderByDescending(c => PlayActivity.CategoryHoursForIdentity(profile.Games, c.Code))
             .ThenByDescending(c => c.TotalHours)
@@ -50,19 +53,28 @@ public static class JokeFieldsBuilder
                       ?? profile.Games.OrderByDescending(g => g.PlaytimeForeverMinutes).FirstOrDefault();
         var lifetimeTop = profile.Games.OrderByDescending(g => g.PlaytimeForeverMinutes).FirstOrDefault();
 
+        var identity = ResolveIdentity(shooterHours, soulsHours, rpgHours, horrorHours, mobaHours, backlogRatio);
+
         return new JokeFields(
-            Citizenship: PickCitizenship(backlogRatio, totalHours, rng),
-            ValidUntil: "до Half-Life 3",
-            Residence: PickResidence(backlogRatio, neverPlayed, rng),
-            Transmission: PickTransmission(shooterHours, soulsHours, rpgHours, hoursLast14Days, totalHours),
-            BloodType: PickBloodType(profile.SteamLevel, totalHours, backlogRatio, rng),
+            Citizenship: PickCitizenship(identity, backlogRatio, totalHours, rng),
+            ValidUntil: Pick(rng,
+                "До Half-Life 3.",
+                "До перезарядки.",
+                "До конца распродажи.",
+                "Пока не кончится эстус."),
+            Residence: PickResidence(identity, backlogRatio, neverPlayed, rng),
+            Transmission: PickTransmission(
+                shooterHours, soulsHours, rpgHours, mobaHours, hoursLast14Days, totalHours),
+            BloodType: PickBloodType(identity, profile.SteamLevel, backlogRatio, rng),
             SpecialMarks: BuildSpecialMarks(
+                identity,
                 profile,
                 neverPlayed,
                 backlogRatio,
                 shooterHours,
                 soulsHours,
                 rpgHours,
+                mobaHours,
                 hoursLast14Days,
                 perfectAchievements,
                 topCat,
@@ -71,9 +83,42 @@ public static class JokeFieldsBuilder
                 pronouns,
                 rng),
             SpecialNotes: BuildSpecialNotes(
-                neverPlayed, backlogRatio, hoursLast14Days, revoked, penalties, rng),
+                identity, neverPlayed, backlogRatio, hoursLast14Days, revoked, penalties, topGame, rng),
             MedicalNotes: BuildMedicalNotes(
-                backlogRatio, hoursLast14Days, shooterHours, soulsHours, profile.VacBanned));
+                identity, backlogRatio, hoursLast14Days, shooterHours, soulsHours, mobaHours,
+                profile.VacBanned));
+    }
+
+    private enum IdentityKind
+    {
+        Shooter,
+        Souls,
+        Rpg,
+        Horror,
+        Moba,
+        Backlog,
+        Mixed,
+    }
+
+    private static IdentityKind ResolveIdentity(
+        double shooter, double souls, double rpg, double horror, double moba, double backlogRatio)
+    {
+        if (backlogRatio >= 0.4 && Math.Max(shooter, Math.Max(souls, Math.Max(rpg, moba))) < 800)
+            return IdentityKind.Backlog;
+
+        var ranked = new (IdentityKind Kind, double Hours)[]
+        {
+            (IdentityKind.Shooter, shooter),
+            (IdentityKind.Souls, souls),
+            (IdentityKind.Rpg, rpg),
+            (IdentityKind.Horror, horror),
+            (IdentityKind.Moba, moba),
+        }.OrderByDescending(x => x.Hours).ToList();
+
+        if (ranked[0].Hours < 120)
+            return backlogRatio >= 0.25 ? IdentityKind.Backlog : IdentityKind.Mixed;
+
+        return ranked[0].Kind;
     }
 
     private static int StableSeed(string steamId64)
@@ -87,77 +132,173 @@ public static class JokeFieldsBuilder
         }
     }
 
-    private static string PickCitizenship(double backlogRatio, double totalHours, Random rng)
+    private static string PickCitizenship(
+        IdentityKind identity, double backlogRatio, double totalHours, Random rng)
     {
         if (backlogRatio >= 0.45)
-            return Pick(rng, "Бэклогистан", "Республика Непройденных", "Независимая Складская Область");
-        if (backlogRatio >= 0.25)
-            return Pick(rng, "Бэклогистан", "Федерация Отложенных Запусков", "Провинция Списка желаний");
-        if (totalHours >= 10_000)
-            return Pick(rng, "Часовск", "Великое Пробежье", "Империя Онлайн-Часов");
-        return Pick(rng, "Габения", "Портовая зона Steam", "Союз Купи-и-Забудь");
+            return Pick(rng,
+                "Бэклогистан. Здесь покупают быстрее, чем запускают.",
+                "Республика Непройденных. Въезд свободный, выезд — нет.",
+                "Складская Область. Население — иконки.");
+
+        return identity switch
+        {
+            IdentityKind.Shooter => Pick(rng,
+                "Респавния. Здесь умирают бесплатно.",
+                "Пороховск. Воздух пахнет гильзами.",
+                "Федерация Мини-Карты. Границы рисуют заново каждый раунд."),
+            IdentityKind.Souls => Pick(rng,
+                "Костроград. Тепло есть. Жизней нет.",
+                "Лордранская область. Туризм не рекомендован.",
+                "Зона YOU DIED. Паспорт уже проштампован."),
+            IdentityKind.Rpg => Pick(rng,
+                "Квестляндия. Главный сюжет где-то рядом.",
+                "Провинция Побочных. Дороги ведут в никуда полезное.",
+                "Вольюжский край. Диалоги длиннее границ."),
+            IdentityKind.Horror => Pick(rng,
+                "Темногорск. Свет включён — уже подозрительно.",
+                "Уезд Холодного Пота. Климат стабильный."),
+            IdentityKind.Moba => Pick(rng,
+                "Рейтинговая Республика. Гражданство обновляется каждую катку.",
+                "Патистан. Один за всех, пока не проиграли.",
+                "Зона Базы. Фонтан — единственный надёжный адрес."),
+            IdentityKind.Backlog => Pick(rng,
+                "Бэклогистан. Здесь покупают быстрее, чем запускают.",
+                "Провинция Списка желаний. Столица — скидка 70%."),
+            _ => totalHours >= 10_000
+                ? Pick(rng,
+                    "Часовск. Время здесь считают пачками.",
+                    "Великое Пробежье. Паспорт уже стёрт от печатей.")
+                : Pick(rng,
+                    "Габения. Визовый режим — лаунчер.",
+                    "Портовая зона Steam. Корабли стоят, иконки плывут."),
+        };
     }
 
-    private static string PickResidence(double backlogRatio, int neverPlayed, Random rng)
+    private static string PickResidence(
+        IdentityKind identity, double backlogRatio, int neverPlayed, Random rng)
     {
         if (neverPlayed >= 40)
             return Pick(rng,
-                "Библиотека им. Габена, стеллаж «ещё не тронуто»",
-                $"Склад дополнений, бокс №{neverPlayed}",
-                "Район Вечных Распродаж, кв. «В корзине»");
-        if (backlogRatio >= 0.2)
-            return Pick(rng,
-                "Библиотека им. Габена",
-                "Общежитие при лаунчере",
-                "ул. Списка желаний, д. 1");
-        return Pick(rng, "Центр игрового движения", "Гараж у CS-сервера", "Дом у игрового костра");
+                $"Склад дополнений, бокс №{neverPlayed}. Ключ потерян.",
+                "Библиотека им. Габена. Стеллаж «ещё не тронуто».",
+                "Район Вечных Распродаж. Квартира «В корзине».");
+
+        return identity switch
+        {
+            IdentityKind.Shooter => Pick(rng,
+                "Респаун, койка №3. Соседи тоже не спят.",
+                "Гараж у CS-сервера. Масло меняют гильзами.",
+                "Бункер у точки A. Вид на бомбу."),
+            IdentityKind.Souls => Pick(rng,
+                "Костёр у тумана. Место №1, очередь бесконечная.",
+                "Общежитие при боссе. Заселение после смерти.",
+                "Уступ над обрывом. Вид хороший. Пол — нет."),
+            IdentityKind.Rpg => Pick(rng,
+                "Таверна «Ещё один квест». Ночлег включён.",
+                "ул. Квестовых Меток, д. 47. Домофон не отвечает.",
+                "Библиотека непрочитанных диалогов. Тихо. Слишком."),
+            IdentityKind.Horror => Pick(rng,
+                "Дом с плохо закрытой дверью. Замок декоративный.",
+                "Квартира без света в коридоре. Экономия."),
+            IdentityKind.Moba => Pick(rng,
+                "Скамья запасных у фонтана. Вид на тильт.",
+                "Общага рейтинга, комн. «one more»."),
+            _ when backlogRatio >= 0.2 => Pick(rng,
+                "Библиотека им. Габена. Пыль — родная.",
+                "Общежитие при лаунчере. Заселение без залога.",
+                "ул. Списка желаний, д. 1. Лифт не работает."),
+            _ => Pick(rng,
+                "Центр игрового движения. Парковка занята.",
+                "Дом у игрового костра. Тёплый, пока горит."),
+        };
     }
 
     private static string PickTransmission(
         double shooterHours,
         double soulsHours,
         double rpgHours,
+        double mobaHours,
         double hoursLast14Days,
         double totalHours)
     {
+        if (mobaHours >= 1500 && mobaHours >= shooterHours * 0.7)
+            return hoursLast14Days >= 15
+                ? "Механика. Сцепление горит, но едет."
+                : "Механика. Рейтинг в гараже, ключ на видном месте.";
+
         if (shooterHours >= rpgHours && shooterHours >= soulsHours && shooterHours >= 1000)
             return hoursLast14Days >= 20
-                ? "Механика (вечный рейтинг, сцепление уже буксовать начинает)"
-                : "Механика (пристреляна, но пылится в гараже)";
+                ? "Механика. Вечный рейтинг — коробка уже скрипит."
+                : "Механика. Пристреляна. Пылится.";
 
         if (soulsHours >= 500 && soulsHours >= shooterHours * 0.4)
-            return "Полуавтомат: умер — загрузился — пошёл снова";
+            return "Полуавтомат. Умер — загрузился — пошёл.";
 
         if (rpgHours >= 1000)
-            return "Вариатор (сюжетный: 120+ часов на «ещё один квест»)";
+            return "Вариатор. 120 часов на «быстрый» квест.";
 
         if (hoursLast14Days <= 0 && totalHours > 100)
-            return "Нейтраль (парк стоит на приколе)";
+            return "Нейтраль. Парк на приколе.";
 
         if (shooterHours > 0 && rpgHours > 0)
-            return "Гибрид (перевоспитан: с шутера на RPG и обратно)";
+            return "Гибрид. Шутер утром, RPG вечером. Или наоборот.";
 
-        return "Автомат «купил — установил — забыл»";
+        return "Автомат. Купил — установил — забыл.";
     }
 
-    private static string PickBloodType(int level, double totalHours, double backlogRatio, Random rng)
+    private static string PickBloodType(
+        IdentityKind identity, int level, double backlogRatio, Random rng)
     {
-        if (backlogRatio >= 0.3)
-            return Pick(rng, "Молоко (парное)", "0 (нулевой пробег)", "B+ (бэклог-положительный)");
-        if (level >= 50)
-            return Pick(rng, "A+ (ачивочный)", "Уровень+", "Кофе с энергетиком");
-        if (totalHours >= 5000)
-            return Pick(rng, "Редкие часы", "Чёрный чай 3 ночи подряд", "Молоко (парное)");
-        return Pick(rng, "Молоко (парное)", "Пиксель-отрицательный", "АВ (любая скидка)");
+        if (backlogRatio >= 0.35)
+            return Pick(rng,
+                "Молоко (парное). Не взбалтывать.",
+                "0 (нулевой пробег). Почти новый.",
+                "B+ (бэклог-положительный). Заразно.");
+
+        return identity switch
+        {
+            IdentityKind.Shooter => Pick(rng,
+                "Порох (I). Не пить. Ну почти.",
+                "A+ (аимовый). Свежий.",
+                "Кофе с адреналином. Без сахара — и так бьёт."),
+            IdentityKind.Souls => Pick(rng,
+                "Эстус (подогретый). Хватает на три глотка.",
+                "RH− (после босса). Редкий.",
+                "Чёрный чай. Три ночи подряд."),
+            IdentityKind.Rpg => Pick(rng,
+                "Чернила квестов. Не стирать.",
+                "A (сюжетная). Медленно течёт.",
+                "Травяной чай с лором. Горький."),
+            IdentityKind.Horror => Pick(rng,
+                "Холодный пот. Охлаждает мгновенно.",
+                "0− (в темноте). Не светить.",
+                "Валерьянка с энергетиком. Взрывной коктейль."),
+            IdentityKind.Moba => Pick(rng,
+                "MMR+. Летуч.",
+                "Энергетик (командный). Делить с пати.",
+                "Кофе «одна катка». Ложь в каждом глотке."),
+            _ => level >= 50
+                ? Pick(rng,
+                    "A+ (ачивочный). Редкий штамп.",
+                    "Уровень+. Концентрированный.",
+                    "Кофе с энергетиком. Для значков.")
+                : Pick(rng,
+                    "Молоко (парное). Не взбалтывать.",
+                    "Пиксель-отрицательный. Совместим со всеми.",
+                    "АВ (любая скидка). Универсальный донор."),
+        };
     }
 
     private static string BuildSpecialMarks(
+        IdentityKind identity,
         SteamProfileSnapshot profile,
         int neverPlayed,
         double backlogRatio,
         double shooterHours,
         double soulsHours,
         double rpgHours,
+        double mobaHours,
         double hoursLast14Days,
         IReadOnlyList<AchievementProgress> perfect,
         GameCategory? topCat,
@@ -166,21 +307,15 @@ public static class JokeFieldsBuilder
         PronounSet pr,
         Random rng)
     {
-        var character = new List<string>();
-        var backlog = new List<string>();
+        if (profile.VacBanned)
+            return $"VAC-учёт ({profile.NumberOfVacBans}). Светится в темноте.";
 
         var topName = topGame is null ? null : Truncate(topGame.Name, 28);
         var topHours = (topGame?.PlaytimeForeverMinutes ?? 0) / 60.0;
-        var recentNote = topGame is null ? null : PlayActivity.FormatLastPlayed(topGame);
-
-        if (topName is not null && (topHours >= 50 || (topGame?.Playtime2WeeksMinutes ?? 0) > 0))
-        {
-            var when = recentNote is null ? "" : $" · {recentNote}";
-            character.Add(Pick(rng,
-                $"сейчас главная лошадка — «{topName}» ({topHours:0.#} ч{when})",
-                $"в глазах читается «{topName}»{when}",
-                $"актуальный пробег: «{topName}» ({topHours:0.#} ч{when})"));
-        }
+        if (topName is not null && topHours >= 800)
+            return Pick(rng,
+                $"«{topName}» — вторая прописка ({topHours:0} ч).",
+                $"Главная лошадка: «{topName}». Корм — часы.");
 
         if (lifetimeTop is not null
             && topGame is not null
@@ -190,167 +325,178 @@ public static class JokeFieldsBuilder
         {
             var legend = Truncate(lifetimeTop.Name, 24);
             var legendWhen = PlayActivity.FormatLastPlayed(lifetimeTop) ?? "давно";
-            character.Add(Pick(rng,
-                $"когда-то легенда «{legend}», но {legendWhen}",
-                $"в трудовой книжке ещё числится «{legend}» ({legendWhen})"));
+            return $"Была легенда «{legend}». Сейчас — {legendWhen}.";
         }
 
-        if (shooterHours >= 3000)
+        return identity switch
         {
-            character.Add(Pick(rng,
-                "в зрачках отражается прицел; слышит шаги через два этажа",
-                "вечный запах пороха и звук перезарядки в голове",
-                "смотрит на людей как на пиксели на мини-карте"));
-        }
-        else if (shooterHours >= 1000)
-        {
-            character.Add(Pick(rng,
-                "лёгкий прищур стрелка",
-                "рука сама тянется поправить чувствительность мыши"));
-        }
-
-        if (soulsHours >= 1000)
-        {
-            character.Add(Pick(rng,
-                "шрам от надписи YOU DIED; чаще падает со скал в игре, чем от боссов",
-                $"спокойное лицо человека, {pr.Which} уже {pr.Died} сегодня раз 40",
-                "походка осторожная: в играх обрывы кусаются"));
-        }
-        else if (soulsHours >= 400)
-        {
-            character.Add("есть опыт «ещё одна попытка» на сложных боссах");
-        }
-
-        if (rpgHours >= 1500)
-        {
-            character.Add(Pick(rng,
-                "смотрит вдаль так, будто там квестовая метка",
-                "в кармане невидимо лежит журнал на 40 побочных заданий"));
-        }
-
-        if (perfect.Count > 0)
-        {
-            var sample = Truncate(perfect[rng.Next(perfect.Count)].GameName, 28);
-            character.Add(Pick(rng,
-                $"все ачивки собраны в «{sample}»",
-                $"перфекционист: «{sample}» закрыта на 100%"));
-        }
-
-        if (hoursLast14Days >= 30)
-            character.Add(Pick(rng, "синяки под глазами формата «ещё одну катку»", "ночной режим включён постоянно"));
-        else if (hoursLast14Days <= 0 && profile.Games.Count > 0)
-            character.Add("выглядит так, будто лаунчер открывает чаще, чем игры");
-
-        if (profile.VacBanned)
-            character.Add($"на учёте ВАС ({profile.NumberOfVacBans})");
-        else if (topCat is not null && character.Count < 2)
-            character.Add($"основная категория сейчас: {topCat.Code} ({topCat.TitleRu})");
-
-        if (profile.SteamLevel >= 70 && character.Count < 2)
-            character.Add($"Steam LVL {profile.SteamLevel} — значки смотрят свысока");
-
-        if (neverPlayed >= 20)
-        {
-            backlog.Add(Pick(rng,
-                $"на полке пылится {neverPlayed} игр без запуска",
-                $"неприкосновенный запас: {neverPlayed} непройденных",
-                $"покупки как наклейки в альбом (+{neverPlayed} без запуска)"));
-        }
-        else if (neverPlayed >= 5)
-        {
-            backlog.Add($"{neverPlayed} игр ждут первого запуска");
-        }
-
-        if (backlogRatio < 0.1 && neverPlayed < 5)
-            character.Add("подозрительно доигрывает купленное — проверить на подмену");
-
-        var parts = character.Concat(backlog).ToList();
-        if (parts.Count == 0)
-            parts.Add("внешних особых примет не обнаружено (кроме библиотеки)");
-
-        if (parts.Count <= 3)
-            return string.Join("; ", parts);
-
-        var head = character.Take(2).ToList();
-        if (backlog.Count > 0)
-            head.Add(backlog[0]);
-        else
-            head.AddRange(character.Skip(2).Take(1));
-
-        return string.Join("; ", head.Take(3));
+            IdentityKind.Shooter when shooterHours >= 2000 => Pick(rng,
+                "Вскидывает прицел при скрипе двери.",
+                "Слышит шаги через два этажа.",
+                "Смотрит на людей как на пиксели."),
+            IdentityKind.Shooter => Pick(rng,
+                "Лёгкий прищур стрелка.",
+                "Рука сама тянется к DPI."),
+            IdentityKind.Souls when soulsHours >= 800 => Pick(rng,
+                "Шрам от надписи YOU DIED.",
+                $"Спокойное лицо: {pr.Which} уже {pr.Died} раз 40.",
+                "Походка осторожная. Обрывы кусаются."),
+            IdentityKind.Souls => "Опыт «ещё одна попытка». Не стирается.",
+            IdentityKind.Rpg => Pick(rng,
+                "Смотрит вдаль — там квестовая метка.",
+                "В кармане журнал на 40 побочных."),
+            IdentityKind.Horror => Pick(rng,
+                "Проверяет шкаф. Не за вещами.",
+                "Вздрагивает, когда динамик орёт."),
+            IdentityKind.Moba when mobaHours >= 1000 => Pick(rng,
+                "Говорит «gg» вместо «доброе утро».",
+                "После «последней» обычно ещё одна."),
+            IdentityKind.Moba => "Лёгкая зависимость от «принять».",
+            IdentityKind.Backlog => Pick(rng,
+                $"На полке {Math.Max(neverPlayed, 5)} игр без запуска.",
+                "Глаза загораются на скидке 70%."),
+            _ when hoursLast14Days >= 25 => "Синяки под глазами формата «ещё часик».",
+            _ when neverPlayed >= 25 => $"{neverPlayed} игр ждут первого запуска.",
+            _ when perfect.Count > 0 => $"100% в «{Truncate(perfect[0].GameName, 24)}». Блестит.",
+            _ when topCat is not null => $"Категория {topCat.Code}. {topCat.TitleRu}.",
+            _ => "Внешне спокоен. Для геймера подозрительно.",
+        };
     }
 
     private static IReadOnlyList<string> BuildSpecialNotes(
+        IdentityKind identity,
         int neverPlayed,
         double backlogRatio,
         double hoursLast14Days,
         IReadOnlyList<GameCategory> revoked,
         PenaltySummary penalties,
+        OwnedGameInfo? topGame,
         Random rng)
     {
         var notes = new List<string>();
 
+        switch (identity)
+        {
+            case IdentityKind.Shooter:
+                notes.Add(Pick(rng,
+                    "К шутерам — с упреждением 0,3 с.",
+                    "Паркур без страховки запрещён."));
+                break;
+            case IdentityKind.Souls:
+                notes.Add(Pick(rng,
+                    "Перед боссом — глоток воды.",
+                    "К обрывам — только с верёвкой."));
+                break;
+            case IdentityKind.Rpg:
+                notes.Add("Побочные: не больше одного «быстрого» за вечер.");
+                break;
+            case IdentityKind.Horror:
+                notes.Add("Наушники на ночь — с разрешения соседей.");
+                break;
+            case IdentityKind.Moba:
+                notes.Add(Pick(rng,
+                    "После поражения — 15 минут вне очереди.",
+                    "Фраза «ещё одну» — только при свидетелях."));
+                break;
+        }
+
         if (neverPlayed >= 30)
         {
             notes.Add(Pick(rng,
-                "запрет на новые покупки до истечения срока (сначала запустить старые)",
-                $"квота на новые покупки: 0, пока на складе ≥ {neverPlayed} игр",
-                "допуск к распродажам — только в сопровождении взрослых"));
+                "К распродажам — только со взрослым.",
+                $"Новые покупки: 0, пока склад ≥ {neverPlayed}."));
         }
         else if (backlogRatio >= 0.2)
         {
-            notes.Add("покупка новой игры — только если есть свидетель первого запуска");
+            notes.Add("Новая игра — только со свидетелем запуска.");
         }
 
         if (hoursLast14Days >= 30)
-            notes.Add("режим усиленного игрового движения: не сидеть за рулём больше 4 часов подряд");
+            notes.Add("За рулём — не больше 4 часов подряд.");
         else if (hoursLast14Days <= 0)
-            notes.Add("рекомендовано принудительно поиграть в ближайшие 14 дней");
+            notes.Add("Рекомендовано поиграть. В ближайшие 14 дней.");
 
-        foreach (var r in revoked.Take(2))
-            notes.Add($"кат. {r.Code}: допуск приостановлен — см. учёт нарушений");
+        if (topGame is not null && topGame.PlaytimeForeverMinutes / 60.0 >= 1500)
+            notes.Add($"«{Truncate(topGame.Name, 22)}» — на особом учёте.");
+
+        foreach (var r in revoked.Take(1))
+            notes.Add($"Кат. {r.Code}: допуск приостановлен.");
 
         if (penalties.TotalPoints >= 6)
-            notes.Add("приближается порог лишения — явка на комиссию ГАБДД обязательна");
+            notes.Add("Порог лишения близко. Явка на комиссию.");
 
         if (notes.Count == 0)
-            notes.Add("особых ограничений нет (пока)");
+            notes.Add("Особых ограничений нет. Пока.");
 
         return notes.Take(4).ToList();
     }
 
     private static IReadOnlyList<string> BuildMedicalNotes(
+        IdentityKind identity,
         double backlogRatio,
         double hoursLast14Days,
         double shooterHours,
         double soulsHours,
+        double mobaHours,
         bool vacBanned)
     {
-        var notes = new List<string>
+        var notes = new List<string>();
+
+        switch (identity)
         {
-            backlogRatio >= 0.25
-                ? "рефлекс покупки — гиперактивен"
-                : "рефлекс покупки — в пределах нормы",
-            hoursLast14Days <= 1
-                ? "рефлекс игры — почти спит"
-                : hoursLast14Days >= 25
-                    ? "рефлекс игры — перевозбуждён (см. шутеры/RPG)"
-                    : "рефлекс игры — стабильный",
-        };
+            case IdentityKind.Shooter:
+                notes.Add(shooterHours >= 2000
+                    ? "Прицел: гипертрофия."
+                    : "Прицел: повышен.");
+                notes.Add("Слух: шаги да, будильник нет.");
+                break;
+            case IdentityKind.Souls:
+                notes.Add("Перекат: гипертрофия.");
+                notes.Add("Сон: по расписанию боссов.");
+                break;
+            case IdentityKind.Rpg:
+                notes.Add("Диалоги: внимание избыточное.");
+                notes.Add("Суббота: риск «короткого» квеста.");
+                break;
+            case IdentityKind.Horror:
+                notes.Add("Громкий звук: сверхнорма.");
+                notes.Add("Сон: фрагменты и шкаф.");
+                break;
+            case IdentityKind.Moba:
+                notes.Add(mobaHours >= 1500
+                    ? "Очередь: клиническая тяга."
+                    : "«Одна катка»: выраженная.");
+                notes.Add("Сон: откладывается после поражения.");
+                break;
+            case IdentityKind.Backlog:
+                notes.Add("Покупка: гиперактивна.");
+                notes.Add("Запуск: почти спит.");
+                break;
+            default:
+                notes.Add(backlogRatio >= 0.25
+                    ? "Покупка: гиперактивна."
+                    : "Покупка: в норме.");
+                notes.Add(hoursLast14Days >= 25
+                    ? "Игра: перевозбуждение."
+                    : hoursLast14Days <= 1
+                        ? "Игра: почти спит."
+                        : "Игра: стабильна.");
+                break;
+        }
 
-        if (shooterHours >= 2000)
-            notes.Add("на звук шагов реагирует отлично; на мысль о сне — никак");
+        if (soulsHours >= 1000 && identity != IdentityKind.Souls)
+            notes.Add("Терпение к смертям: повышено.");
 
-        if (soulsHours >= 1000)
-            notes.Add("терпение к смертям повышено (соулс-лайки)");
+        if (shooterHours >= 2000 && identity != IdentityKind.Shooter)
+            notes.Add("На шаги реагирует отлично.");
 
         notes.Add(vacBanned
-            ? "к игровому движению НЕ годен (ВАС-учёт)"
-            : backlogRatio >= 0.25 || hoursLast14Days >= 40
-                ? "годен к игровому движению с ограничениями (см. отметки)"
-                : "годен к игровому движению");
+            ? "К движению НЕ годен (VAC)."
+            : backlogRatio >= 0.25 || hoursLast14Days >= 40 || mobaHours >= 2000
+                ? "Годен с ограничениями."
+                : "Годен к игровому движению.");
 
-        return notes;
+        return notes.Take(4).ToList();
     }
 
     private static string Pick(Random rng, params string[] options) =>

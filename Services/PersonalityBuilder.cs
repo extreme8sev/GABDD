@@ -2,7 +2,9 @@ using SteamFun.Domain;
 
 namespace SteamFun.Services;
 
-/// <summary>Шуточный психопортрет — конкретный под телеметрию, без мутных каламбуров.</summary>
+/// <summary>
+/// Шуточный психопортрет в тоне Fallout Shelter: короткие deadpan-карточки, без канцелярита.
+/// </summary>
 public static class PersonalityBuilder
 {
     public static PersonalityPortrait Build(
@@ -54,20 +56,22 @@ public static class PersonalityBuilder
         var seriesHits = SeriesAffinity.Detect(profile.Games, take: 3);
         var primarySeries = seriesHits.FirstOrDefault();
 
-        var code = BuildTypeCode(shooter, rpg, souls, horror, backlogRatio, hoursLast14Days, rng);
+        var typeLabel = BuildTypeLabel(
+            shooter, rpg, souls, horror, moba, backlogRatio, hoursLast14Days, rng);
         var archetype = PickArchetype(
-            code, shooter, rpg, souls, horror, sandbox, strategy, backlogRatio, hoursLast14Days,
+            typeLabel, shooter, rpg, souls, horror, sandbox, strategy, moba, backlogRatio, hoursLast14Days,
             topName, primarySeries, pr, rng);
+
+        var indictment = IndictmentBuilder.Build(
+            profile, fleetSize, neverPlayed, totalHours, rng);
 
         var seriesTag = primarySeries is null
             ? ""
             : $" · серия {primarySeries.DisplayName}×{primarySeries.OwnedCount}";
         var headline =
-            $"{profile.PersonaName} · код {code} · «{archetype}»{seriesTag} · Steam LVL {profile.SteamLevel}";
+            $"{profile.PersonaName} · «{archetype}»{seriesTag} · Steam LVL {profile.SteamLevel}";
 
-        var summary = BuildSummary(
-            profile, fleetSize, neverPlayed, backlogRatio, totalHours, hoursLast14Days,
-            topName, topHours, topGames, code, primarySeries, pr, rng);
+        var summary = indictment.Headline;
 
         var traits = BuildTraits(
             profile, topGames, shooter, rpg, souls, horror, sandbox, survival, racing, sim, casual,
@@ -87,13 +91,14 @@ public static class PersonalityBuilder
             primarySeries, pr, rng);
 
         var verdict = BuildVerdict(
-            profile.PersonaName, code, archetype, backlogRatio, hoursLast14Days,
+            profile.PersonaName, typeLabel, archetype, backlogRatio, hoursLast14Days,
             profile.VacBanned, neverPlayed, topName, primarySeries, pr, rng);
 
         return new PersonalityPortrait(
-            Archetype: $"{archetype} [{code}]",
+            Archetype: typeLabel,
             Headline: headline,
             Summary: summary,
+            Charges: indictment.Charges,
             Traits: traits,
             Strengths: strengths,
             Risks: risks,
@@ -101,28 +106,58 @@ public static class PersonalityBuilder
             Verdict: verdict);
     }
 
-    private static string BuildTypeCode(
-        double shooter, double rpg, double souls, double horror,
+    private static string BuildTypeLabel(
+        double shooter, double rpg, double souls, double horror, double moba,
         double backlogRatio, double recent, Random rng)
     {
-        var a = shooter >= Math.Max(rpg, souls) ? "F" :
-                souls >= rpg ? "D" :
-                "L";
-        var b = backlogRatio >= 0.35 ? "W" :
-                backlogRatio >= 0.2 ? "B" :
-                "C";
-        var c = recent >= 25 ? "N" :
-                recent <= 1 ? "H" :
-                "S";
-        var d = horror >= 500 ? "J" :
-                shooter >= 2000 ? "R" :
-                Pick(rng, "P", "Q", "X");
-        return a + b + c + d;
+        var pool = new List<string>();
+
+        if (moba >= 2000)
+            pool.AddRange(["Клинический каточник", "Пациент рейтинга", "Жертва «ещё одну»"]);
+        else if (moba >= 500)
+            pool.AddRange(["Каточник со стажем", "Человек привычки к пати"]);
+
+        if (shooter >= 2500)
+            pool.AddRange(["Человек-прицел", "Охотник за шагами", "Пациент DPI"]);
+        else if (shooter >= 800)
+            pool.Add("Стрелок по совместительству");
+
+        if (souls >= 1000)
+            pool.AddRange(["Пациент костра", "Мастер попытки №83"]);
+        else if (souls >= 400)
+            pool.Add("Знаком с YOU DIED");
+
+        if (rpg >= 1500)
+            pool.AddRange(["Носитель непрочитанных квестов", "Летописец побочных"]);
+        else if (rpg >= 500)
+            pool.Add("Сюжетник со стажем");
+
+        if (horror >= 400)
+            pool.AddRange(["Коллекционер холодного пота", "Любитель внезапного ора"]);
+
+        if (backlogRatio >= 0.35)
+            pool.AddRange(["Директор склада Steam", "Хранитель нераспечатанного"]);
+        else if (backlogRatio >= 0.2)
+            pool.Add("Коллекционер потенциала");
+
+        if (recent >= 30)
+            pool.AddRange(["Бессонница с лицензией", "Ночная смена в лаунчере"]);
+        else if (recent <= 1)
+            pool.AddRange(["Спящий владелец библиотеки", "Призрак вкладки «Игры»"]);
+
+        if (pool.Count == 0)
+            pool.AddRange([
+                "Обычный нарушитель спокойствия",
+                "Гражданин Габении",
+                "Игрок средней тяжести",
+            ]);
+
+        return Pick(rng, pool.ToArray());
     }
 
     private static string PickArchetype(
         string code, double shooter, double rpg, double souls, double horror, double sandbox,
-        double strategy, double backlogRatio, double recent, string topName,
+        double strategy, double moba, double backlogRatio, double recent, string topName,
         SeriesHit? series, PronounSet pr, Random rng)
     {
         if (series is not null && series.OwnedCount >= 2)
@@ -147,120 +182,65 @@ public static class PersonalityBuilder
             if (s is not null)
                 pool.Add(s);
         }
+
+        if (moba >= 2000)
+            pool.AddRange([
+                "Житель рейтинга",
+                "Тот, для кого «GG» — приветствие и прощание",
+                $"Главный по «ещё одну» в «{topName}»",
+            ]);
+        else if (moba >= 400)
+            pool.AddRange(["Каточник с трудовым стажем", "Знает цену плохого пика"]);
+
         if (shooter >= 4000 && souls >= 1000)
             pool.AddRange([
-                "Ранговый игрок с соулс-стажем",
-                $"Человек-прицел, {pr.Which} не боится надписи YOU DIED",
-                $"Фанат и «{topName}», и сложных боссов сразу",
+                "Ранговый с соулс-стажем",
+                $"Прицел, {pr.Which} не боится YOU DIED",
             ]);
         if (shooter >= 2500)
             pool.AddRange([
-                $"Человек, {pr.Which} вечно крутит чувствительность мыши",
-                "Ночной охотник за чужими шагами",
-                $"Главный по «ещё одну катку» в «{topName}»",
+                $"Тот, {pr.Which} вечно крутит DPI",
+                "Ночной охотник за шагами",
                 $"{pr.Who} слышит перезарядку через стену",
             ]);
         if (souls >= 1000)
             pool.AddRange([
-                $"{pr.Who} умирает на боссе 80 раз и всё равно лезет снова",
-                "Мастер спокойствия на попытке №83",
-                "Чаще гибнет от обрыва в игре, чем от самого босса",
+                $"{pr.Who} умирает 80 раз и лезет снова",
+                "Спокойствие на попытке №83",
+                "Гибнет от обрыва чаще, чем от босса",
             ]);
         if (rpg >= 1500)
             pool.AddRange([
-                "Носитель 47 непрочитанных квестовых меток",
-                $"{pr.Who} читает все диалоги… иногда вслух",
-                $"Летописец мира «{topName}»",
+                "Носитель 47 квестовых меток",
+                $"{pr.Who} читает все диалоги",
+                $"Летописец «{topName}»",
             ]);
         if (horror >= 400)
-            pool.AddRange([
-                "Любитель игр, где внезапно орёт динамик",
-                "Коллекционер холодного пота",
-            ]);
+            pool.AddRange(["Любитель внезапного ора динамика", "Коллекционер холодного пота"]);
         if (sandbox >= 1500)
-            pool.AddRange([
-                "Строитель империй, в которые никто не звал",
-                "Инженер бессмысленных, но красивых баз",
-            ]);
+            pool.AddRange(["Строитель империй без приглашения", "Инженер красивых бессмысленных баз"]);
         if (strategy >= 600)
-            pool.AddRange([
-                "Полководец на паузе",
-                "Стратег с табличками в голове",
-            ]);
+            pool.AddRange(["Полководец на паузе", "Стратег с табличками в голове"]);
         if (backlogRatio >= 0.3)
             pool.AddRange([
-                "Куратор музея нераспечатанного счастья",
-                "Посол республики Списка желаний",
-                "Смотритель склада «потом поиграю»",
+                "Куратор музея нераспечатанного",
+                "Посол Списка желаний",
+                "Смотритель склада «потом»",
             ]);
         if (recent <= 1)
             pool.AddRange(["Спящий владелец лаунчера", "Призрак вкладки «Библиотека»"]);
         if (recent >= 30)
-            pool.AddRange([
-                "Человек без режима дня и ночи",
-                "Пилот без кнопки выключения",
-            ]);
+            pool.AddRange(["Человек без режима дня", "Пилот без кнопки выключения"]);
 
         if (pool.Count == 0)
             pool.AddRange([
                 "Универсальный нарушитель спокойствия",
                 "Гражданин Габении без ярлыка",
-                $"Фанат «{topName}» без диагноза",
+                $"Фанат «{topName}» без ярлыка",
             ]);
 
         var idx = (code.GetHashCode() & 0x7FFFFFFF) % pool.Count;
         return pool[idx];
-    }
-
-    private static string BuildSummary(
-        SteamProfileSnapshot profile,
-        int fleet,
-        int neverPlayed,
-        double backlogRatio,
-        double totalHours,
-        double recent,
-        string topName,
-        double topHours,
-        IReadOnlyList<OwnedGameInfo> topGames,
-        string code,
-        SeriesHit? series,
-        PronounSet pr,
-        Random rng)
-    {
-        var years = profile.AccountCreated is null
-            ? "?"
-            : $"{(int)((DateTimeOffset.Now - profile.AccountCreated.Value).TotalDays / 365.25)}";
-
-        var topLine = string.Join(", ", topGames.Take(3).Select(g =>
-            $"«{ShortName(g.Name)}» ({g.PlaytimeForeverMinutes / 60.0:0.#} ч)"));
-
-        var opener = Pick(rng,
-            $"Комиссия ГАБДД вскрыла сейф со статистикой {profile.PersonaName} и слегка присвистнула.",
-            $"По итогам проверки выяснилось: {profile.PersonaName} — не баг, а штатная функция Steam.",
-            $"Если бы личность была персонажем, у {profile.PersonaName} стоял бы тег «слишком увлечённый».");
-
-        var body = Pick(rng,
-            $"{years} лет в строю, {totalHours:0} ч общего пробега, библиотека на {fleet} игр. " +
-            $"Из них {neverPlayed} до сих пор в заводской плёнке ({backlogRatio:P0} склада). " +
-            $"Больше всего времени: {topLine}. Код личности {code} выбит на лобовом стекле лаунчера.",
-
-            $"Главный роман жизни — «{topName}» ({topHours:0.#} ч), остальное — брак сразу с кучей игр. " +
-            $"За 14 дней: {recent:0.#} ч. Незапущенных: {neverPlayed}. " +
-            $"Комиссия отмечает: человек явно знает, где кнопка «В корзину».");
-
-        var seriesBit = series is null ? null : SeriesAffinity.SummarySnippet(series, pr, rng);
-
-        var closer = backlogRatio >= 0.3
-            ? Pick(rng,
-                "Прогноз: следующая распродажа будет и оскорблением кошелька, и приглашением одновременно.",
-                "Рекомендация родственникам: прятать карту в сезон распродаж Steam.")
-            : recent >= 25
-                ? "Прогноз: сон станет как дополнение — куплено, но не установлено."
-                : "Прогноз: стабильный игровой климат с локальными вспышками «ещё часик».";
-
-        return seriesBit is null
-            ? $"{opener} {body} {closer}"
-            : $"{opener} {body} {seriesBit} {closer}";
     }
 
     private static IReadOnlyList<string> BuildTraits(
@@ -287,95 +267,107 @@ public static class PersonalityBuilder
             var n = ShortName(g.Name);
             if (h >= 800)
                 pool.Add(Pick(rng,
-                    $"В паспорте невидимо вписано: «{n}», {h:0} ч",
-                    $"Кнопки в «{n}» находит с закрытыми глазами (и делает это регулярно)",
-                    $"«{n}» для {pr.Gen} не игра, а вторая прописка ({h:0.#} ч)"));
+                    $"«{n}» — вторая прописка ({h:0} ч).",
+                    $"Кнопки в «{n}» находит вслепую.",
+                    $"«{n}» для {pr.Gen} не игра, а адрес."));
             else if (h >= 200)
-                pool.Add($"Серьёзно встречается с «{n}» ({h:0.#} ч), но пока без штампа в паспорте");
+                pool.Add($"Серьёзно встречается с «{n}» ({h:0.#} ч).");
         }
 
         if (shooter >= 2000)
             pool.AddRange(Shuffle(rng, [
-                "Слышит шаги лучше, чем собственное имя",
-                "Различает 14 видов шагов и 0 видов здорового сна",
-                "Считает, что «gg» — это полноценное эмоциональное письмо",
-                $"Мышь у {pr.Gen} имеет стаж больше, чем некоторые браки",
+                "Слышит шаги лучше собственного имени.",
+                "14 видов шагов. 0 видов здорового сна.",
+                "Считает «gg» полноценным письмом.",
+                $"Мышь у {pr.Gen} старше некоторых браков.",
+                "DPI крутит чаще, чем признаёт поражения.",
             ]));
 
         if (souls >= 800)
             pool.AddRange(Shuffle(rng, [
-                "Умеет сквозь зубы сказать боссу «спасибо за урок»",
-                "Верит, что «ещё одна попытка» — это нормальный план на вечер",
-                "Чаще гибнет, сорвавшись со скалы в игре, чем от удара врага",
-                $"Точка сохранения для {pr.Gen} почти как психотерапевт",
+                "Боссу сквозь зубы: «спасибо за урок».",
+                "«Ещё одна попытка» — план на вечер.",
+                "Гибнет от обрыва чаще, чем от удара.",
+                $"Точка сохранения для {pr.Gen} — почти терапевт.",
             ]));
 
         if (rpg >= 1200)
             pool.AddRange(Shuffle(rng, [
-                "Пропускает катсцены только если горит ужин (иногда даже тогда нет)",
-                "Держит в голове сюжетные ветки лучше, чем планы на неделю",
-                "Может поставить жизнь на паузу ради «быстрого» побочного квеста на 3 часа",
+                "Катсцены пропускает только если горит ужин.",
+                "Сюжетные ветки помнит лучше планов на неделю.",
+                "Жизнь на паузу ради «быстрого» побочного.",
             ]));
 
         if (horror >= 300)
             pool.AddRange(Shuffle(rng, [
-                "Громкость наушников — отдельный аттракцион для соседей",
-                "Проверяет шкаф не за вещами, а на всякий случай",
+                "Громкость наушников — аттракцион для соседей.",
+                "Проверяет шкаф. Не за вещами.",
             ]));
 
         if (sandbox >= 800)
-            pool.Add("Строит идеальную базу и забывает, зачем она нужна");
+            pool.Add("Строит идеальную базу. Забывает зачем.");
         if (survival >= 300)
-            pool.Add("Копит палки, камни и чувство ложной безопасности");
+            pool.Add("Копит палки, камни и ложную безопасность.");
         if (racing >= 150)
-            pool.Add("В реальном дворе тоже мечтает об откате после ДТП, как в игре");
+            pool.Add("Во дворе тоже мечтает об откате после ДТП.");
         if (sim >= 100)
-            pool.Add("Может мыть виртуальные машины старательнее, чем реальную кружку");
+            pool.Add("Моет виртуальные машины старательнее кружки.");
         if (casual >= 50)
-            pool.Add("Иногда притворяется казуалом — комиссия не верит");
+            pool.Add("Притворяется казуалом. Никто не верит.");
         if (fighting >= 20)
-            pool.Add("Знает тайминги ударов наизусть — и это уже диагноз");
-        if (moba > 0)
-            pool.Add("В МОБА заглядывал — и вовремя вышел. Уважение.");
+            pool.Add("Тайминги ударов наизусть. Это уже ярлык.");
+        if (moba >= 2000)
+            pool.AddRange(Shuffle(rng, [
+                $"МОБА на {moba:0} ч — вторая прописка.",
+                "«Одна катка» звучит как «на пять минут».",
+                "Союзники в чате — отдельный вид спорта.",
+            ]));
+        else if (moba >= 300)
+            pool.AddRange(Shuffle(rng, [
+                $"В МОБА {moba:0} ч. Понятно.",
+                "«Решающая» катка редко последняя.",
+            ]));
+        else if (moba >= 30)
+            pool.Add($"МОБА на {moba:0.#} ч: заглянул и сделал выводы.");
+        else if (moba > 0)
+            pool.Add("В МОБА заглянул коротко. И вовремя вышел.");
 
         if (backlogRatio >= 0.25)
             pool.AddRange(Shuffle(rng, [
-                $"Покупает быстрее, чем запускает (хвост из {neverPlayed} игр)",
-                "Список желаний длиннее списка дел",
-                "Считает непройденные игры формой инвестиций",
-                "Библиотека как альбом наклеек: главное — собрать комплект",
+                $"Покупает быстрее, чем запускает ({neverPlayed} в хвосте).",
+                "Список желаний длиннее списка дел.",
+                "Непройденные игры — форма инвестиций.",
+                "Библиотека как альбом наклеек.",
             ]));
 
         if (recent >= 30)
             pool.Add(Pick(rng,
-                $"За 14 дней {recent:0} ч — это уже не хобби, а вторая смена",
-                "Режим сна и бодрствования подал в отставку"));
+                $"За 14 дней {recent:0} ч — вторая смена.",
+                "Режим сна подал в отставку."));
         if (recent <= 0)
-            pool.Add("Лаунчер открывает чаще, чем игры — чистый эстетический опыт");
+            pool.Add("Лаунчер открывает чаще игр. Эстетика.");
 
         if (perfect.Count > 0)
         {
             var p = perfect[rng.Next(perfect.Count)];
-            pool.Add(Pick(rng,
-                $"Выбил 100% ачивок в «{ShortName(p.GameName)}» — перфекционизм с лицензией",
-                $"«{ShortName(p.GameName)}» закрыта полностью: все достижения собраны"));
+            pool.Add($"100% в «{ShortName(p.GameName)}». Блестит.");
         }
 
         if (worstAch is not null && worstAch.Total >= 20)
         {
             var pct = 100.0 * worstAch.Unlocked / worstAch.Total;
             if (pct < 40)
-                pool.Add($"В «{ShortName(worstAch.GameName)}» ачивки на {pct:0}% — тут {pr.Nom} человек, а не робот");
+                pool.Add($"В «{ShortName(worstAch.GameName)}» ачивки {pct:0}%. Человек, не робот.");
         }
 
         if (profile.SteamLevel >= 70)
-            pool.Add($"Steam LVL {profile.SteamLevel}: карточки и значки смотрят с уважением");
+            pool.Add($"Steam LVL {profile.SteamLevel}. Значки кивают.");
 
         pool.AddRange(Shuffle(rng, [
-            $"{Cap(pr.Able)} объяснить, почему «ещё час» длится три",
-            "Имеет сложные отношения с кнопкой закрытия игры",
-            "Верит в магию «последней катки»",
-            "Говорит «я выйду после раунда» и остаётся до титров",
+            $"{Cap(pr.Able)} объяснить, почему «ещё час» длится три.",
+            "Сложные отношения с кнопкой закрытия.",
+            "Верит в магию «последней катки».",
+            "«Выйду после раунда» — остаётся до титров.",
         ]));
 
         return DistinctTake(pool, 5, rng, pinned);
@@ -393,40 +385,40 @@ public static class PersonalityBuilder
             pinned.AddRange(SeriesAffinity.Strengths(series, pr, rng).Take(1));
 
         pool.Add(Pick(rng,
-            $"Эксперт по «{topName}»: {topHours:0} часов для {pr.Gen} — это разогрев",
-            $"Может провести экскурсию по меню «{topName}» с закрытыми глазами"));
+            $"Эксперт по «{topName}». {topHours:0} ч — разогрев.",
+            $"Экскурсия по меню «{topName}» — с закрытыми глазами."));
 
         if (totalHours >= 10000)
             pool.Add(Pick(rng,
-                $"Общий пробег {totalHours:0} ч: правила игрового мира знает наизусть",
-                $"Опыт такой, что новички принимают {pr.Acc} за обучалку"));
+                $"Пробег {totalHours:0} ч. Правила наизусть.",
+                $"Новички принимают {pr.Acc} за обучалку."));
         if (shooter >= 2000)
             pool.AddRange(Shuffle(rng, [
-                "Отдачу оружия контролирует лучше, чем эмоции в чате",
-                "Мини-карту читает как утреннюю газету",
-                "Когда остался один против всех — родная стихия",
+                "Отдачу контролирует лучше эмоций в чате.",
+                "Мини-карту читает как утреннюю газету.",
+                "Один против всех — родная стихия.",
             ]));
         if (souls >= 800)
             pool.AddRange(Shuffle(rng, [
-                "Не бесится после десятой смерти — или хорошо прячет",
-                $"После 50 смертей всё ещё почти {pr.Polite} с геймпадом",
+                "После десятой смерти не бесится. Или прячет.",
+                $"После 50 смертей всё ещё почти {pr.Polite}.",
             ]));
         if (rpg >= 1200)
-            pool.Add("Многозадачность: квест, история, крафт и «куда я шёл» одновременно");
+            pool.Add("Квест, лор, крафт и «куда шёл» — одновременно.");
         if (strategy >= 500)
-            pool.Add("Видит систему там, где другие видят «просто поиграю»");
+            pool.Add("Видит систему там, где другие «просто играют».");
         if (sandbox >= 800)
-            pool.Add("Креатив уровня «зачем, но красиво»");
+            pool.Add("Креатив уровня «зачем, но красиво».");
         if (perfect.Count > 0)
-            pool.Add($"Дожимает контент: {perfect.Count} игр с полным набором ачивок в топ-10");
+            pool.Add($"Дожимает: {perfect.Count} игр с полным набором ачивок.");
         if (level >= 50)
-            pool.Add($"Steam LVL {level}: {pr.Gen} значки смотрят на чужие значки сверху вниз");
+            pool.Add($"Steam LVL {level}. Смотрит на чужие значки сверху.");
         if (recent >= 15)
-            pool.Add($"Форма сейчас горячая — лучше не попадаться {pr.Dat} в матче");
+            pool.Add($"Форма горячая. Лучше не попадаться {pr.Dat}.");
 
         pool.AddRange(Shuffle(rng, [
-            "Умеет гуглить сборки персонажа быстрее, чем признавать поражение",
-            "Есть внутренняя инструкция «как не сломаться на поражении» (черновик)",
+            "Гуглит сборки быстрее, чем признаёт поражение.",
+            "Есть инструкция «как не сломаться». Черновик.",
         ]));
 
         return DistinctTake(pool, 4, rng, pinned);
@@ -445,36 +437,36 @@ public static class PersonalityBuilder
 
         if (backlogRatio >= 0.2)
             pool.AddRange(Shuffle(rng, [
-                $"Склад из {neverPlayed} непройденных может обрушиться на совесть",
-                "Распродажа включает кошелёк быстрее, чем здравый смысл",
-                $"При {fleet} играх легко перепутать библиотеку со складом Ozon",
+                $"Склад из {neverPlayed} непройденных может обрушиться.",
+                "Распродажа включает кошелёк быстрее здравого смысла.",
+                $"При {fleet} играх библиотека похожа на склад.",
             ]));
 
         if (recent >= 30)
             pool.AddRange(Shuffle(rng, [
-                "Сон воспринимается как необязательное задание",
-                "Риск перепутать «сейчас выйду» с «уже утро»",
-                $"Передозировка «{topName}» без рецепта",
+                "Сон — необязательное задание.",
+                "Риск перепутать «сейчас выйду» с «уже утро».",
+                $"Передозировка «{topName}» без рецепта.",
             ]));
         else if (recent <= 0)
-            pool.Add("Риск стать коллекционером пыли с лицензией Steam");
+            pool.Add("Риск стать коллекционером пыли.");
 
         if (shooter >= 2500)
             pool.AddRange(Shuffle(rng, [
-                "Зависимость от рейтинга и звука чужих кроссовок",
-                "Возможны вспышки «это союзники виноваты»",
-                "Мышь и нервы изнашиваются синхронно",
+                "Зависимость от рейтинга и чужих кроссовок.",
+                "Вспышки «это союзники виноваты».",
+                "Мышь и нервы изнашиваются синхронно.",
             ]));
         if (souls >= 800)
-            pool.Add("Давление скачет на крупных боссах — добровольно");
+            pool.Add("Давление скачет на боссах. Добровольно.");
         if (horror >= 400)
-            pool.Add("Ночью поглядывает в тёмный угол «на всякий случай»");
+            pool.Add("Ночью глядит в тёмный угол. На всякий.");
         if (rpg >= 1500)
-            pool.Add("Риск потерять субботу в «коротком» побочном квесте");
+            pool.Add("Риск потерять субботу в «коротком» побочном.");
 
         pool.Add(Pick(rng,
-            "Может начать оправдывать покупку дополнения философски",
-            "Иногда путает отдых с подбором идеальной сборки персонажа"));
+            "Может оправдать покупку DLC философски.",
+            "Путает отдых с подбором идеальной сборки."));
 
         return DistinctTake(pool, 4, rng, pinned);
     }
@@ -488,27 +480,27 @@ public static class PersonalityBuilder
             ? SeriesAffinity.CompatibilitySnippet(series, pr, rng)!
             : shooter >= 1500
             ? Pick(rng,
-                $"В совместной игре {pr.Valuable}, если микрофон не орёт от боли",
-                "Идеальный напарник для «давай ещё одну» — предупредите окружающих")
+                $"Вдвоём {pr.Valuable}, если микрофон не орёт.",
+                "Напарник для «ещё одну». Предупредите соседей.")
             : souls >= 800
-                ? "В совместной игре редкий гость: страдать предпочитает лично"
-                : "Для сюжетной игры вдвоём — находка, особенно если не спойлерить";
+                ? "Вдвоём редкий гость. Страдать любит лично."
+                : "Для сюжета вдвоём — находка. Без спойлеров.";
 
         var solo = Pick(rng,
-            $"В одиночку включает «{topName}» и пропадает с радаров",
-            "В одиночку играет отлично — иногда слишком отлично для окружающих");
+            $"В одиночку включает «{topName}» и пропадает.",
+            "В одиночку играет отлично. Иногда слишком.");
 
         var sales = backlogRatio >= 0.25
             ? Pick(rng,
-                $"С распродажами {pr.Incompatible} без сопровождающего (на складе уже {neverPlayed})",
-                "Список желаний + скидка 70% = чрезвычайная ситуация для кошелька")
-            : "К распродажам допущен, но комиссия всё равно следит за глазами";
+                $"С распродажами {pr.Incompatible} без сопровождающего ({neverPlayed} на складе).",
+                "Список желаний + 70% = ЧС для кошелька.")
+            : "К распродажам допущен. Глаза всё равно следят.";
 
         var time = recent >= 25
-            ? $"Лучшее время для игры: «уже поздно» по мнению всех, кроме {pr.Gen}"
-            : "Лучшее время для игры: спокойный вечер без геройства до 5 утра";
+            ? $"Лучшее время: «уже поздно» для всех, кроме {pr.Gen}."
+            : "Лучшее время: спокойный вечер. Без рейдов до 5 утра.";
 
-        return $"{duo}. {solo}. {sales}. {time}.";
+        return $"{duo} {solo} {sales} {time}";
     }
 
     private static string BuildVerdict(
@@ -516,38 +508,37 @@ public static class PersonalityBuilder
         bool vac, int neverPlayed, string topName, SeriesHit? series, PronounSet pr, Random rng)
     {
         if (vac)
-            return $"НЕ ГОДЕН. {name} числится на ВАС-учёте — сначала мировая, потом лаунчер.";
+            return $"НЕ ГОДЕН. {name} на VAC-учёте. Сначала мировая, потом лаунчер.";
 
         var seriesStamp = series is null ? null : SeriesAffinity.VerdictSnippet(series, pr, rng);
 
         if (backlogRatio >= 0.3 && recent >= 25)
         {
             var core = Pick(rng,
-                $"ГОДЕН С УСЛОВИЯМИ. Диагноз: «{archetype}». Играет как {pr.Cursed}, покупает как {pr.Obsessed}. " +
-                $"Предписание: 1 запуск из склада на каждые 3 часа в «{topName}». Код {code}.",
-                $"ГОДЕН. Форма «высокопроизводительный хаос». Печать: можно за руль, но карту от распродаж лучше отдать на хранение надёжному человеку.");
+                $"ГОДЕН С УСЛОВИЯМИ. «{archetype}». Играет как {pr.Cursed}, покупает как {pr.Obsessed}. " +
+                $"1 запуск со склада на каждые 3 ч в «{topName}».",
+                "ГОДЕН. Высокопроизводительный хаос. Карту от распродаж — на хранение.");
             return seriesStamp is null ? core : $"{core} {seriesStamp}";
         }
 
         if (backlogRatio >= 0.35)
         {
-            var core = $"ГОДЕН УСЛОВНО. Архетип «{archetype}», код {code}. " +
-                       $"Основной диагноз — коллекционирование потенциала ({neverPlayed} игр ждут своего часа).";
+            var core = $"ГОДЕН УСЛОВНО. «{archetype}». {neverPlayed} игр ждут своего часа.";
             return seriesStamp is null ? core : $"{core} {seriesStamp}";
         }
 
         if (recent >= 30)
         {
             var core = Pick(rng,
-                $"ГОДЕН. Код {code}. Следить за сном и витамином D. «{topName}» не оправдание перед рассветом.",
-                $"ГОДЕН К НОЧНЫМ РЕЙСАМ. Архетип «{archetype}». Выдать термос и запрет на «последнюю катку».");
+                $"ГОДЕН. Следить за сном. «{topName}» — не оправдание перед рассветом.",
+                $"ГОДЕН К НОЧНЫМ РЕЙСАМ. «{archetype}». Выдать термос.");
             return seriesStamp is null ? core : $"{core} {seriesStamp}";
         }
 
         var baseLine = Pick(rng,
-            $"ГОДЕН. {name} стабилен, код {code}, архетип «{archetype}». Можно выдавать права на лаунчер.",
-            $"ГОДЕН. Комиссия улыбнулась, штамп поставлен. Пусть «{topName}» будет милостив.",
-            $"ГОДЕН К ИГРОВОМУ ДВИЖЕНИЮ. Статистика сходится с диагнозом: «человек играет в игры, и {pr.Dat} норм».");
+            $"ГОДЕН. {name} стабилен. «{code}». Права на лаунчер можно.",
+            $"ГОДЕН. Штамп поставлен. Пусть «{topName}» будет милостив.",
+            $"ГОДЕН. Играет в игры, и {pr.Dat} норм.");
         return seriesStamp is null ? baseLine : $"{baseLine} {seriesStamp}";
     }
 

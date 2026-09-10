@@ -30,7 +30,7 @@ public static class ConsoleLicenseRenderer
         sb.AppendLine($"  8.  ГРУППА КРОВИ ......... {license.BloodType ?? "—"}");
         sb.AppendLine($"  9.  ПАРК СРЕДСТВ ......... {license.FleetSize} ед. (без запуска: {license.NeverPlayedCount})");
         sb.AppendLine($"  10. ПРОБЕГ ОБЩИЙ ......... {license.TotalHours:0.#} ч  (14 дн.: {license.HoursLast14Days:0.#} ч)");
-        sb.AppendLine($"  11. ВАС-УЧЁТ ............. {FormatVac(p)}");
+        sb.AppendLine($"  11. VAC-УЧЁТ ............. {FormatVac(p)}");
         sb.AppendLine($"  12. ОСОБЫЕ ПРИМЕТЫ ....... {license.SpecialMarks ?? "—"}");
         sb.AppendLine();
         sb.AppendLine($"  Штрихкод / Steam64ID: {p.SteamId64}");

@@ -18,6 +18,7 @@ public sealed class MainForm : Form
     private readonly BackLicensePanel _back;
     private readonly TopGamesPanel _top;
     private readonly PersonalityPanel _personality;
+    private readonly ReceiptPanel _receipt;
 
     private string? _apiKey;
     private CancellationTokenSource? _loadCts;
@@ -147,12 +148,14 @@ public sealed class MainForm : Form
         _back = new BackLicensePanel();
         _top = new TopGamesPanel();
         _personality = new PersonalityPanel();
+        _receipt = new ReceiptPanel();
 
         _tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(8, 8) };
         _tabs.TabPages.Add(Wrap("Лицевая сторона", _front));
         _tabs.TabPages.Add(Wrap("Оборотная сторона", _back));
         _tabs.TabPages.Add(Wrap("Психопортрет", _personality));
-        _tabs.TabPages.Add(Wrap("Top-10", _top));
+        _tabs.TabPages.Add(Wrap("Посмотри на себя", _top));
+        _tabs.TabPages.Add(Wrap("Кассовый чек", _receipt));
 
         Controls.Add(_tabs);
         Controls.Add(_statusLabel);
@@ -453,5 +456,6 @@ public sealed class MainForm : Form
         _back.Bind(license);
         _personality.Bind(license);
         _top.Bind(license);
+        _receipt.Bind(license);
     }
 }

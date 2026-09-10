@@ -7,7 +7,9 @@ public sealed record OwnedGameInfo(
     int Playtime2WeeksMinutes,
     DateTimeOffset? LastPlayedUtc,
     IReadOnlyList<string> Genres,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags,
+    /// <summary>Текущая/базовая цена в Store (₽), null если нет данных / free / снято.</summary>
+    int? StorePriceRub = null);
 
 public sealed record AchievementProgress(
     int AppId,
@@ -58,6 +60,7 @@ public sealed record PersonalityPortrait(
     string Archetype,
     string Headline,
     string Summary,
+    IReadOnlyList<string> Charges,
     IReadOnlyList<string> Traits,
     IReadOnlyList<string> Strengths,
     IReadOnlyList<string> Risks,

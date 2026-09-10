@@ -18,6 +18,20 @@ public static class ViolationRules
 
     public const int PointsForZeroMileageFleet = 1;
 
+    /// <summary>Игры с пробегом &gt; 0 и &lt; 2 ч — «бросил после тест-драйва».</summary>
+    public const int MinTestDriveDrops = 8;
+    public const int TestDriveMaxMinutes = 120;
+    public const int PointsForTestDriveDrops = 2;
+
+    /// <summary>Одна игра сверх «ресурса» категории.</summary>
+    public const double OverResourceHours = 800;
+    public const int PointsForOverResource = 2;
+    public const int PointsForOverResourceMild = 1;
+
+    /// <summary>Две тяжёлые дисциплины без общего жанра — «рывки».</summary>
+    public const double DisciplineSwitchHours = 600;
+    public const int PointsForDisciplineSwitch = 1;
+
     /// <summary>Категория открыта, если суммарно ≥ N часов в жанре.</summary>
     public const double HoursToOpenCategory = 5.0;
 

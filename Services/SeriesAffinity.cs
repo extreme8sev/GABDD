@@ -105,7 +105,7 @@ public static partial class SeriesAffinity
             return hit.OwnedCount >= 2
                 ? Pick(rng,
                     $"Коллекционер серии «{hit.DisplayName}»",
-                    $"Фанат вселенной «{hit.DisplayName}» ({hit.OwnedCount} части)")
+                    $"Фанат «{hit.DisplayName}» ×{hit.OwnedCount}")
                 : null;
         }
 
@@ -115,31 +115,31 @@ public static partial class SeriesAffinity
     public static IEnumerable<string> Traits(SeriesHit hit, PronounSet pr, Random rng) =>
         FlavorLines(hit, pr, rng, curated: d => d.Traits, generic: h =>
         [
-            $"В библиотеке {h.OwnedCount} части серии «{h.DisplayName}» — это уже не случайность",
-            $"Серия «{h.DisplayName}»: {h.TotalHours:0} ч суммарно, как отдельная прописка",
+            $"«{h.DisplayName}» ×{h.OwnedCount}. Уже не случайность.",
+            $"Серия «{h.DisplayName}»: {h.TotalHours:0} ч. Вторая прописка.",
         ]);
 
     public static IEnumerable<string> Strengths(SeriesHit hit, PronounSet pr, Random rng) =>
         FlavorLines(hit, pr, rng, curated: d => d.Strengths, generic: h =>
         [
-            $"Ориентируется в «{h.DisplayName}» лучше, чем в собственных закладках браузера",
+            $"В «{h.DisplayName}» ориентируется лучше, чем в закладках.",
             h.BestTitle is null
-                ? $"Держит серию «{h.DisplayName}» как личную сагу"
-                : $"Лучшая глава саги — «{Short(h.BestTitle)}»",
+                ? $"«{h.DisplayName}» — личная сага."
+                : $"Лучшая глава — «{Short(h.BestTitle)}».",
         ]);
 
     public static IEnumerable<string> Risks(SeriesHit hit, PronounSet pr, Random rng) =>
         FlavorLines(hit, pr, rng, curated: d => d.Risks, generic: h =>
         [
-            $"Риск купить следующую часть «{h.DisplayName}» «просто чтобы была»",
-            $"Может начать объяснять лор «{h.DisplayName}» без запроса",
+            $"Риск купить следующую «{h.DisplayName}» «чтобы была».",
+            $"Может объяснить лор «{h.DisplayName}» без запроса.",
         ]);
 
     public static string? CompatibilitySnippet(SeriesHit hit, PronounSet pr, Random rng)
     {
         var def = FindDef(hit.Id);
         if (def is null)
-            return $"В совместной игре по «{hit.DisplayName}» — только без спойлеров лора";
+            return $"Вдвоём по «{hit.DisplayName}» — без спойлеров лора.";
 
         return Format(Pick(rng, def.Compatibility), hit, pr);
     }
@@ -150,7 +150,7 @@ public static partial class SeriesAffinity
         if (def is null)
         {
             return hit.OwnedCount >= 2
-                ? $"Отдельно комиссия отмечает серию «{hit.DisplayName}»: {hit.OwnedCount} части, {hit.TotalHours:0.#} ч на семью игр."
+                ? $"Серия «{hit.DisplayName}»: {hit.OwnedCount} части, {hit.TotalHours:0.#} ч."
                 : null;
         }
 
@@ -161,7 +161,7 @@ public static partial class SeriesAffinity
     {
         var def = FindDef(hit.Id);
         if (def is null)
-            return $"Печать серии: «{hit.DisplayName}» ({hit.OwnedCount} изд.).";
+            return $"Печать: «{hit.DisplayName}» ×{hit.OwnedCount}.";
 
         return Format(Pick(rng, def.VerdictBits), hit, pr);
     }
@@ -315,6 +315,46 @@ public static partial class SeriesAffinity
     private static readonly SeriesDef[] Catalog =
     [
         new(
+            Id: "dota",
+            DisplayName: "Dota 2",
+            AppIds: Ids(570),
+            Matches: n => StartsWithWord(n, "dota"),
+            Archetypes:
+            [
+                "Житель рейтинга · Dota 2",
+                "Тот, для кого «одна катка» — жанр",
+                "Ветеран паба с хроническим «ещё одну»",
+            ],
+            Traits:
+            [
+                "Dota 2 на {hours} ч. Работа без зарплаты.",
+                "«GG» быстрее, чем «доброе утро».",
+                "Союзники в чате — отдельный босс.",
+            ],
+            Strengths:
+            [
+                "Рошана помнит лучше списка покупок.",
+                "Умеет объяснить: поражение — «из-за пика».",
+            ],
+            Risks:
+            [
+                "Риск превратить вечер в серию «последних».",
+                "После тильта — ещё одна «для настроения».",
+            ],
+            Compatibility:
+            [
+                "В пати — только без «report support» на 3-й минуте.",
+            ],
+            SummaryBits:
+            [
+                "Dota 2 — {hours} ч. Печать «каточник».",
+            ],
+            VerdictBits:
+            [
+                "Допуск к рейтингу: Dota 2 ({hours} ч).",
+            ]),
+
+        new(
             Id: "mafia",
             DisplayName: "Mafia",
             AppIds: Ids(
@@ -331,44 +371,44 @@ public static partial class SeriesAffinity
                 || ContainsPhrase(n, "mafia the old country"),
             Archetypes:
             [
-                "Хранитель омерты · серия Mafia",
+                "Хранитель омерты · Mafia",
                 "Солдато библиотеки Hangar 13",
-                "Тот, для кого «семья» — это Mafia I–III",
-                "Летописец Empire Bay и Lost Heaven",
+                "Тот, для кого «семья» — Mafia I–III",
+                "Летописец Empire Bay",
             ],
             Traits:
             [
-                "В библиотеке {count} части Mafia — семья уже не просто DLC",
-                "Смотрит на городские прогулки как на миссию для семьи",
-                "Знает, что «ещё одна сигара» в Mafia — это план на вечер",
-                "{best} в списке — как запись в трудовой книжке семьи",
+                "Mafia ×{count}. Семья уже не DLC.",
+                "Городские прогулки — миссия для семьи.",
+                "«Ещё одна сигара» — план на вечер.",
+                "«{best}» — запись в трудовой семьи.",
             ],
             Strengths:
             [
-                "Знает разницу между Empire Bay и New Bordeaux лучше, чем между районами своего города",
-                "Умеет объяснить, почему ремейк Mafia — это уважение к первоисточнику",
-                "В сюжетном криминальном экшене держит темп как Tommy Angelo на закате",
+                "Empire Bay и New Bordeaux различает лучше районов города.",
+                "Ремейк Mafia — уважение к первоисточнику. Знает.",
+                "В криминальном экшене держит темп.",
             ],
             Risks:
             [
-                "Риск романтизировать 1930-е сильнее, чем полезно для сна",
-                "Может купить саундтрек раньше, чем доиграть основную кампанию",
-                "После титров Mafia снова полезет проверять, нет ли ещё одной части",
+                "Риск романтизировать 1930-е сильнее сна.",
+                "Может купить саундтрек раньше кампании.",
+                "После титров — проверка, нет ли ещё части.",
             ],
             Compatibility:
             [
-                "Вдвоём в Mafia — только если партнёр не орёт спойлеры про семью",
-                "Идеальный кооп-собеседник после катсцены: «ну ты видел этот поворот?»",
+                "Вдвоём в Mafia — без спойлеров про семью.",
+                "После катсцены: «ну ты видел этот поворот?»",
             ],
             SummaryBits:
             [
-                "Отдельной строкой: серия Mafia — {count} части, {hours} ч. Комиссия кивает: это уже семейный подряд.",
-                "В карточке личности красным: лояльность к Mafia ({count} изд., лучший пробег — «{best}»).",
+                "Mafia ×{count}, {hours} ч. Семейный подряд.",
+                "Лояльность к Mafia ({count} изд., «{best}»).",
             ],
             VerdictBits:
             [
-                "Допуск к семейным делам: серия Mafia отмечена печатью ({count} ч.).",
-                "Штамп «омерта соблюдена» — за {hours} ч в Mafia.",
+                "Допуск к семейным делам: Mafia ×{count}.",
+                "Штамп «омерта». {hours} ч в Mafia.",
             ]),
 
         new(
@@ -379,35 +419,35 @@ public static partial class SeriesAffinity
                            || ContainsPhrase(n, "witcher 3") || ContainsPhrase(n, "witcher iii"),
             Archetypes:
             [
-                "Ведьмак с подпиской на побочные квесты",
-                "Хранитель Континента · The Witcher",
+                "Ведьмак с подпиской на побочные",
+                "Хранитель Континента · Witcher",
             ],
             Traits:
             [
-                "Серия The Witcher: {count} части, и Гвинт всё ещё не отпущен",
-                "«{best}» — как второй паспорт с гербом Вольюгии",
+                "Witcher ×{count}. Гвинт всё ещё не отпущен.",
+                "«{best}» — второй паспорт с гербом Вольюгии.",
             ],
             Strengths:
             [
-                "Диалоги читает внимательнее, чем уведомления с работы",
-                "Знает, что «быстрый» квест у CDPR длится три вечера",
+                "Диалоги читает внимательнее уведомлений с работы.",
+                "Знает: «быстрый» квест у CDPR — три вечера.",
             ],
             Risks:
             [
-                "Риск начать новый NG+ вместо реальных дел",
-                "Может сравнить любой RPG с The Witcher 3 — и не в пользу первого",
+                "Риск NG+ вместо реальных дел.",
+                "Любой RPG сравнит с Witcher 3. Не в пользу первого.",
             ],
             Compatibility:
             [
-                "В совместном прохождении Witcher — редкий зверь; страдает обычно лично",
+                "Вдвоём в Witcher — редкий зверь. Страдает лично.",
             ],
             SummaryBits:
             [
-                "Ведьмачья строка: {count} части The Witcher, {hours} ч. Белый Волк одобряет.",
+                "Witcher ×{count}, {hours} ч. Белый Волк кивает.",
             ],
             VerdictBits:
             [
-                "Годен к Континенту. Печать The Witcher ({hours} ч).",
+                "Годен к Континенту. Witcher ({hours} ч).",
             ]),
 
         new(
@@ -417,34 +457,34 @@ public static partial class SeriesAffinity
             Matches: n => StartsWithWord(n, "mass effect"),
             Archetypes:
             [
-                "Командор Шепард библиотеки · Mass Effect",
+                "Командор Шепард библиотеки",
                 "Тот, кто снова выбирает цвет брони",
             ],
             Traits:
             [
-                "Mass Effect в библиотеке: {count} части — Нормандия не улетала далеко",
-                "Решения в диалогах для {gen} важнее, чем урон оружия",
+                "Mass Effect ×{count}. Нормандия рядом.",
+                "Диалоги для {gen} важнее урона.",
             ],
             Strengths:
             [
-                "Помнит состав отряда лучше, чем состав холодильника",
-                "Legendary Edition для {gen} — не ремастер, а повторная служба",
+                "Отряд помнит лучше состава холодильника.",
+                "Legendary Edition — повторная служба.",
             ],
             Risks:
             [
-                "Риск третьего прохождения «чтобы посмотреть другую ветку»",
+                "Риск третьего прохождения «на другую ветку».",
             ],
             Compatibility:
             [
-                "Кооп в ME — больше про споры «кого взять на миссию», чем про стрельбу",
+                "Кооп в ME — споры «кого взять», не стрельба.",
             ],
             SummaryBits:
             [
-                "Галактическая метка: Mass Effect ×{count}, {hours} ч. Жнецы могут подождать.",
+                "Mass Effect ×{count}, {hours} ч. Жнецы подождут.",
             ],
             VerdictBits:
             [
-                "Годен к Нормандии. Mass Effect — {hours} ч на счету.",
+                "Годен к Нормандии. Mass Effect — {hours} ч.",
             ]),
 
         new(
@@ -458,33 +498,33 @@ public static partial class SeriesAffinity
                           || StartsWithWord(n, "morrowind"),
             Archetypes:
             [
-                "Довакин с мод-менеджером · Elder Scrolls",
+                "Довакин с мод-менеджером",
                 "Гражданин Тамриэля без регистрации",
             ],
             Traits:
             [
-                "Elder Scrolls: {count} точки входа в Тамриэль, {hours} ч ссылки",
-                "«Ещё один мод» звучит для {gen} как «ещё пять часов»",
+                "Elder Scrolls ×{count}. {hours} ч ссылки.",
+                "«Ещё один мод» для {gen} = ещё пять часов.",
             ],
             Strengths:
             [
-                "Умеет потеряться в стороне от основного квеста профессионально",
+                "Теряется в стороне от основного квеста профессионально.",
             ],
             Risks:
             [
-                "Риск потратить вечер на порядок в модах вместо игры",
+                "Риск вечера на порядок в модах вместо игры.",
             ],
             Compatibility:
             [
-                "Вдвоём в Skyrim — если оба согласны не спойлерить драконов",
+                "Вдвоём в Skyrim — без спойлеров про драконов.",
             ],
             SummaryBits:
             [
-                "Пометка Тамриэль: серия Elder Scrolls, {count} изд., {hours} ч.",
+                "Тамриэль: Elder Scrolls ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [
-                "Годен к Скайриму и окрестностям. Elder Scrolls — в деле.",
+                "Годен к Скайриму. Elder Scrolls в деле.",
             ]),
 
         new(
@@ -494,33 +534,33 @@ public static partial class SeriesAffinity
             Matches: n => StartsWithWord(n, "fallout"),
             Archetypes:
             [
-                "Житель убежища с коллекцией Fallout",
+                "Житель убежища · Fallout",
                 "Тот, кто проверяет радиацию из привычки",
             ],
             Traits:
             [
-                "Fallout ×{count}: пустошь уже как дача",
-                "VATS в голове включается чаще, чем будильник",
+                "Fallout ×{count}. Пустошь как дача.",
+                "VATS включается чаще будильника.",
             ],
             Strengths:
             [
-                "Лут сортирует быстрее, чем мысли о сне",
+                "Лут сортирует быстрее мыслей о сне.",
             ],
             Risks:
             [
-                "Риск ещё одного «быстрого захода» на 4 часа",
+                "Риск «быстрого захода» на 4 часа.",
             ],
             Compatibility:
             [
-                "Совместная пустошь — ок, если не красть друг у друга хлам",
+                "Совместная пустошь — ок, если не красть хлам.",
             ],
             SummaryBits:
             [
-                "Радиационная метка: Fallout, {count} части, {hours} ч.",
+                "Fallout ×{count}, {hours} ч. Радиация в норме.",
             ],
             VerdictBits:
             [
-                "Годен к пустоши. Fallout отмечен ({hours} ч).",
+                "Годен к пустоши. Fallout ({hours} ч).",
             ]),
 
         new(
@@ -532,33 +572,33 @@ public static partial class SeriesAffinity
                           || StartsWithWord(n, "assassin’s creed"),
             Archetypes:
             [
-                "Ассасин с абонементом на паркур · AC",
+                "Ассасин с абонементом на паркур",
                 "Коллекционер синдикатов и эпох",
             ],
             Traits:
             [
-                "Assassin's Creed: {count} частей — история как DLC к паркуру",
-                "Синхронизация точки обзора для {gen} — ритуал",
+                "AC ×{count}. История как DLC к паркуру.",
+                "Синхронизация точки обзора — ритуал.",
             ],
             Strengths:
             [
-                "Карту местности читает раньше, чем сюжет",
+                "Карту читает раньше сюжета.",
             ],
             Risks:
             [
-                "Риск купить следующую эпоху «на скидке, чисто посмотреть»",
+                "Риск купить следующую эпоху «чисто посмотреть».",
             ],
             Compatibility:
             [
-                "Кооп в AC — если оба не будут спорить про канон Анимуса",
+                "Кооп в AC — без споров про канон Анимуса.",
             ],
             SummaryBits:
             [
-                "Метка ассасина: {count} части AC, {hours} ч.",
+                "AC ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [
-                "Годен к прыжку веры. Assassin's Creed в деле.",
+                "Годен к прыжку веры. AC в деле.",
             ]),
 
         new(
@@ -569,33 +609,33 @@ public static partial class SeriesAffinity
                           || StartsWithWord(n, "biohazard"),
             Archetypes:
             [
-                "Спец по вирусам и узким коридорам · RE",
+                "Спец по вирусам и узким коридорам",
                 "Тот, кто экономит патроны даже в меню",
             ],
             Traits:
             [
-                "Resident Evil ×{count}: инвентарь 8 слотов — стиль жизни",
-                "«{best}» оставила след громче соседей",
+                "RE ×{count}. 8 слотов — стиль жизни.",
+                "«{best}» орала громче соседей.",
             ],
             Strengths:
             [
-                "Спокойно открывает дверь, за которой наверняка кто-то орёт",
+                "Спокойно открывает дверь, за которой орёт.",
             ],
             Risks:
             [
-                "Риск ночных забегов с наушниками на максимуме",
+                "Риск ночных забегов с наушниками на максимуме.",
             ],
             Compatibility:
             [
-                "Вдвоём в RE — только с договорённостью «кто орёт первым»",
+                "Вдвоём в RE — договорённость «кто орёт первым».",
             ],
             SummaryBits:
             [
-                "Вирусная отметка: Resident Evil, {count} части, {hours} ч.",
+                "Resident Evil ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [
-                "Годен к зонтичной корпорации. RE — {hours} ч.",
+                "Годен к Umbrella. RE — {hours} ч.",
             ]),
 
         new(
@@ -611,28 +651,28 @@ public static partial class SeriesAffinity
             Archetypes:
             [
                 "Гражданин Лос-Сантоса · GTA",
-                "Тот, для кого «ещё одна миссия» — гражданская позиция",
+                "Тот, для кого «ещё одна миссия» — позиция",
             ],
             Traits:
             [
-                "GTA в библиотеке: {count} точки входа в хаос, {hours} ч пробега",
-                "Радио в машине для {gen} важнее основного квеста",
+                "GTA ×{count}, {hours} ч хаоса.",
+                "Радио для {gen} важнее основного квеста.",
             ],
             Strengths:
             [
-                "Знает карту города лучше навигатору",
+                "Карту города знает лучше навигатору.",
             ],
             Risks:
             [
-                "Риск «пяти минуток» в Online до рассвета",
+                "Риск «пяти минуток» в Online до рассвета.",
             ],
             Compatibility:
             [
-                "Кооп в GTA — если микрофон не превращается в крик о хеликаптере",
+                "Кооп в GTA — если микрофон не кричит про хелик.",
             ],
             SummaryBits:
             [
-                "Метка Лос-Сантоса: GTA ×{count}, {hours} ч.",
+                "GTA ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [
@@ -653,32 +693,32 @@ public static partial class SeriesAffinity
             Archetypes:
             [
                 "Паломник FromSoftware",
-                "Тот, кто говорит «ещё одна попытка» без иронии",
+                "Тот, кто говорит «ещё одна попытка» всерьёз",
             ],
             Traits:
             [
-                "FromSoftware ×{count}: YOU DIED уже как приветствие",
-                "«{best}» — главный экзаменатор терпения",
+                "FromSoftware ×{count}. YOU DIED как приветствие.",
+                "«{best}» — главный экзаменатор терпения.",
             ],
             Strengths:
             [
-                "После 50 смертей всё ещё почти {polite} с контроллером",
+                "После 50 смертей всё ещё почти {polite}.",
             ],
             Risks:
             [
-                "Риск объяснить билд вместо сна",
+                "Риск объяснить билд вместо сна.",
             ],
             Compatibility:
             [
-                "Кооп в душах — редкий праздник; обычно страдают соло",
+                "Кооп в душах — редкий праздник. Обычно соло.",
             ],
             SummaryBits:
             [
-                "Печать FromSoftware: {count} испытания, {hours} ч.",
+                "FromSoftware ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [
-                "Годен к костру. FromSoftware — в трудовой.",
+                "Годен к костру. FromSoftware в трудовой.",
             ]),
 
         new(
@@ -690,33 +730,33 @@ public static partial class SeriesAffinity
                           || StartsWithWord(n, "baldur’s gate"),
             Archetypes:
             [
-                "Мастер кубиков и катсцен · Baldur's Gate",
+                "Мастер кубиков · Baldur's Gate",
                 "Тот, кто сохраняется перед каждым диалогом",
             ],
             Traits:
             [
-                "Baldur's Gate: {count} кампании, {hours} ч ролевых последствий",
-                "Отряд собирает дольше, чем обед",
+                "Baldur's Gate ×{count}, {hours} ч последствий.",
+                "Отряд собирает дольше обеда.",
             ],
             Strengths:
             [
-                "Умеет провалить проверку харизмы и всё равно отыграть это красиво",
+                "Проваливает проверку харизмы — и отыгрывает красиво.",
             ],
             Risks:
             [
-                "Риск третьего прохождения «за злую сторону»",
+                "Риск третьего прохождения «за злую сторону».",
             ],
             Compatibility:
             [
-                "Мультиплеер BG3 — если все готовы ждать чужой ход у сундука",
+                "Мультиплеер BG3 — если все ждут у сундука.",
             ],
             SummaryBits:
             [
-                "Метка Фэйруна: Baldur's Gate ×{count}, {hours} ч.",
+                "Baldur's Gate ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [
-                "Годен к кубику d20. Baldur's Gate в деле.",
+                "Годен к d20. Baldur's Gate в деле.",
             ]),
 
         new(
@@ -731,24 +771,24 @@ public static partial class SeriesAffinity
             ],
             Traits:
             [
-                "Cyberpunk в библиотеке: {hours} ч в неоне",
-                "«{best}» — как вторая прописка в Найт-Сити",
+                "Cyberpunk: {hours} ч в неоне.",
+                "«{best}» — вторая прописка в Найт-Сити.",
             ],
             Strengths:
             [
-                "Стиль персонажа для {gen} — часть геймплея, не косметика",
+                "Стиль для {gen} — часть геймплея, не косметика.",
             ],
             Risks:
             [
-                "Риск ещё одного «быстрого» проезда по району на час",
+                "Риск «быстрого» проезда по району на час.",
             ],
             Compatibility:
             [
-                "Вдвоём смотреть катсцены Cyberpunk — ок; спойлерить финал — нет",
+                "Вдвоём катсцены — ок. Спойлерить финал — нет.",
             ],
             SummaryBits:
             [
-                "Неоновая строка: Cyberpunk, {hours} ч.",
+                "Cyberpunk, {hours} ч.",
             ],
             VerdictBits:
             [
@@ -762,27 +802,27 @@ public static partial class SeriesAffinity
             Matches: n => StartsWithWord(n, "dragon age"),
             Archetypes:
             [
-                "Серый Страж с архивом романов · Dragon Age",
+                "Серый Страж с архивом романов",
             ],
             Traits:
             [
-                "Dragon Age ×{count}: выборы в диалогах важнее билдов",
+                "Dragon Age ×{count}. Выборы важнее билдов.",
             ],
             Strengths:
             [
-                "Помнит, кого обидел в Origins, лучше, чем пароли",
+                "Помнит, кого обидел в Origins, лучше паролей.",
             ],
             Risks:
             [
-                "Риск читать вики лора вместо сна",
+                "Риск читать вики лора вместо сна.",
             ],
             Compatibility:
             [
-                "Совместное обсуждение DA — да; спойлеры про архонта — нет",
+                "Обсуждение DA — да. Спойлеры про архонта — нет.",
             ],
             SummaryBits:
             [
-                "Метка Тедаса: Dragon Age, {count} части, {hours} ч.",
+                "Dragon Age ×{count}, {hours} ч.",
             ],
             VerdictBits:
             [

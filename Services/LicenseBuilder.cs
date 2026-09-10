@@ -12,7 +12,7 @@ public static class LicenseBuilder
         var pronouns = Pronouns.For(gender);
 
         var categories = BuildCategories(profile.Games);
-        var penalties = BuildPenalties(profile.Games.Count, neverPlayed, recentMinutes);
+        var penalties = BuildPenalties(profile.Games, neverPlayed, recentMinutes);
         var jokes = JokeFieldsBuilder.Build(
             profile,
             categories,
@@ -98,9 +98,13 @@ public static class LicenseBuilder
         return (CategoryStatus.NotOpened, null);
     }
 
-    private static PenaltySummary BuildPenalties(int fleetSize, int neverPlayed, int recentMinutes)
+    private static PenaltySummary BuildPenalties(
+        IReadOnlyList<OwnedGameInfo> games,
+        int neverPlayed,
+        int recentMinutes)
     {
         var violations = new List<Violation>();
+        var fleetSize = games.Count;
 
         if (neverPlayed >= ViolationRules.NeverPlayedForStorageViolation)
         {
@@ -109,7 +113,17 @@ public static class LicenseBuilder
                 ViolationRules.PointsForUnlaunchedStorage));
         }
 
-        if (recentMinutes <= 0)
+        var testDrives = games.Count(g =>
+            g.PlaytimeForeverMinutes > 0
+            && g.PlaytimeForeverMinutes < ViolationRules.TestDriveMaxMinutes);
+        if (testDrives >= ViolationRules.MinTestDriveDrops)
+        {
+            violations.Add(new Violation(
+                $"Бросил {testDrives} ед. после тест-драйва (пробег < 2 ч)",
+                ViolationRules.PointsForTestDriveDrops));
+        }
+
+        if (recentMinutes <= 0 && fleetSize > 0)
         {
             violations.Add(new Violation(
                 "Простой всего парка: 0 ч за 14 дней",
@@ -124,7 +138,54 @@ public static class LicenseBuilder
                 ViolationRules.PointsForZeroMileageFleet));
         }
 
+        var top = games
+            .OrderByDescending(g => g.PlaytimeForeverMinutes)
+            .FirstOrDefault();
+        if (top is not null)
+        {
+            var hours = top.PlaytimeForeverMinutes / 60.0;
+            var name = ShortGame(top.Name);
+            if (hours >= ViolationRules.OverResourceHours * 2)
+            {
+                violations.Add(new Violation(
+                    $"Превышение ресурса «{name}» на {hours:0} ч — выезд на встречку без радара",
+                    ViolationRules.PointsForOverResource));
+            }
+            else if (hours >= ViolationRules.OverResourceHours)
+            {
+                violations.Add(new Violation(
+                    $"Эксплуатация «{name}» сверх ресурса: {hours:0} ч",
+                    ViolationRules.PointsForOverResourceMild));
+            }
+        }
+
+        var heavy = games
+            .Where(g => g.PlaytimeForeverMinutes / 60.0 >= ViolationRules.DisciplineSwitchHours)
+            .OrderByDescending(g => g.PlaytimeForeverMinutes)
+            .Take(2)
+            .ToList();
+        if (heavy.Count == 2)
+        {
+            var a = GenreMapper.Map(heavy[0]);
+            var b = GenreMapper.Map(heavy[1]);
+            var overlap = a.Intersect(b).Any();
+            if (!overlap)
+            {
+                var h0 = heavy[0].PlaytimeForeverMinutes / 60.0;
+                var h1 = heavy[1].PlaytimeForeverMinutes / 60.0;
+                violations.Add(new Violation(
+                    $"Смена дисциплины без перерыва: «{ShortGame(heavy[0].Name)}» {h0:0} ч → «{ShortGame(heavy[1].Name)}» {h1:0} ч — рывки",
+                    ViolationRules.PointsForDisciplineSwitch));
+            }
+        }
+
         var total = Math.Min(ViolationRules.MaxPoints, violations.Sum(v => v.Points));
         return new PenaltySummary(violations, total, ViolationRules.MaxPoints);
+    }
+
+    private static string ShortGame(string name)
+    {
+        name = name.Replace("™", "").Replace("®", "").Trim();
+        return name.Length <= 28 ? name : name[..27] + "…";
     }
 }

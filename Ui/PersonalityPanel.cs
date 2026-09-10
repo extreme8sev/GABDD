@@ -8,6 +8,7 @@ internal sealed class PersonalityPanel : UserControl
     private readonly Label _archetype;
     private readonly Label _headline;
     private readonly Label _summary;
+    private readonly FlowLayoutPanel _charges;
     private readonly FlowLayoutPanel _traits;
     private readonly FlowLayoutPanel _strengths;
     private readonly FlowLayoutPanel _risks;
@@ -25,8 +26,8 @@ internal sealed class PersonalityPanel : UserControl
         _card = new Panel
         {
             Width = 840,
-            Height = 760,
-            MinimumSize = new Size(840, 700),
+            Height = 920,
+            MinimumSize = new Size(840, 820),
             BackColor = UiTheme.CardBack,
             Location = new Point(16, 16),
             Padding = new Padding(0),
@@ -55,7 +56,7 @@ internal sealed class PersonalityPanel : UserControl
         };
         _archetype = new Label
         {
-            Text = "Архетип: —",
+            Text = "Диагноз: —",
             Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold),
             ForeColor = Color.FromArgb(255, 210, 120),
             AutoSize = true,
@@ -73,24 +74,34 @@ internal sealed class PersonalityPanel : UserControl
             ForeColor = UiTheme.Value,
             AutoSize = false,
             Dock = DockStyle.Top,
-            Height = 28,
+            Height = 26,
         };
 
         _summary = new Label
         {
             Text = "—",
-            Font = UiTheme.SmallFont,
-            ForeColor = UiTheme.Value,
+            Font = new Font("Segoe UI Semibold", 10f, FontStyle.Bold),
+            ForeColor = UiTheme.AccentRed,
             AutoSize = false,
             Dock = DockStyle.Top,
-            Height = 100,
+            Height = 48,
         };
 
-        // Низ: совместимость + штамп — фиксированно высокий, чтобы длинный вердикт влезал.
+        var chargesCap = SectionCaption("Статьи обвинения");
+        _charges = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(2, 0, 2, 8),
+        };
+
         _bottom = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 210,
+            Height = 200,
             Padding = new Padding(0, 4, 0, 0),
         };
 
@@ -99,7 +110,7 @@ internal sealed class PersonalityPanel : UserControl
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 1,
-            Padding = new Padding(0, 8, 0, 8),
+            Padding = new Padding(0, 4, 0, 4),
         };
         columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
         columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
@@ -120,10 +131,10 @@ internal sealed class PersonalityPanel : UserControl
             ForeColor = UiTheme.Value,
             AutoSize = false,
             Dock = DockStyle.Top,
-            Height = 52,
+            Height = 48,
         };
 
-        var verdCap = SectionCaption("Штамп комиссии");
+        var verdCap = SectionCaption("Психологическая экспертиза · штамп");
         _verdict = new Label
         {
             Text = "—",
@@ -140,19 +151,20 @@ internal sealed class PersonalityPanel : UserControl
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(0, 4, 0, 0),
-            MinimumSize = new Size(0, 90),
+            MinimumSize = new Size(0, 80),
         };
         verdHost.Controls.Add(_verdict);
 
-        // Порядок Dock: Fill первым в Controls, Top — сверху вниз в обратном порядке добавления.
-        _bottom.Controls.Add(verdHost);   // Fill
-        _bottom.Controls.Add(verdCap);    // Top (ниже compatibility)
+        _bottom.Controls.Add(verdHost);
+        _bottom.Controls.Add(verdCap);
         _bottom.Controls.Add(_compatibility);
         _bottom.Controls.Add(compCap);
 
-        body.Controls.Add(columns);  // Fill
-        body.Controls.Add(_bottom);  // Bottom
-        body.Controls.Add(_summary); // Top
+        body.Controls.Add(columns);
+        body.Controls.Add(_bottom);
+        body.Controls.Add(_charges);
+        body.Controls.Add(chargesCap);
+        body.Controls.Add(_summary);
         body.Controls.Add(_headline);
 
         _card.Controls.Add(body);
@@ -195,9 +207,10 @@ internal sealed class PersonalityPanel : UserControl
     public void Bind(GamerLicense license)
     {
         var p = license.Personality;
-        _archetype.Text = $"Архетип: {p.Archetype}";
+        _archetype.Text = $"Диагноз: {p.Archetype}";
         _headline.Text = p.Headline;
         _summary.Text = p.Summary;
+        FillCharges(p.Charges);
         Fill(_traits, p.Traits, UiTheme.Value);
         Fill(_strengths, p.Strengths, UiTheme.OpenedBorder);
         Fill(_risks, p.Risks, UiTheme.AccentRed);
@@ -210,8 +223,27 @@ internal sealed class PersonalityPanel : UserControl
             ? UiTheme.Revoked
             : UiTheme.Opened;
 
-        // Подгоняем высоту нижней панели под длину штампа.
         AdjustBottomForVerdict();
+    }
+
+    private void FillCharges(IReadOnlyList<string> charges)
+    {
+        _charges.Controls.Clear();
+        for (var i = 0; i < charges.Count; i++)
+        {
+            var n = i + 1;
+            _charges.Controls.Add(new Label
+            {
+                Text = $"{n}.  {charges[i]}",
+                ForeColor = UiTheme.Value,
+                Font = UiTheme.SmallFont,
+                AutoSize = true,
+                MaximumSize = new Size(780, 0),
+                Margin = new Padding(0, 0, 0, 10),
+            });
+        }
+
+        _charges.Height = Math.Max(80, _charges.PreferredSize.Height);
     }
 
     private void AdjustBottomForVerdict()
@@ -221,13 +253,11 @@ internal sealed class PersonalityPanel : UserControl
         using var format = new StringFormat { FormatFlags = StringFormatFlags.LineLimit };
         format.Trimming = StringTrimming.Word;
         var size = g.MeasureString(_verdict.Text, _verdict.Font, contentWidth, format);
-        var verdictBlock = Math.Max(96, (int)Math.Ceiling(size.Height) + 28);
-        // подписи + совместимость + штамп + отступы
-        var needed = 18 + 52 + 18 + verdictBlock + 16;
-        _bottom.Height = Math.Clamp(needed, 200, 320);
+        var verdictBlock = Math.Max(88, (int)Math.Ceiling(size.Height) + 28);
+        var needed = 18 + 48 + 18 + verdictBlock + 16;
+        _bottom.Height = Math.Clamp(needed, 180, 300);
 
-        // Карточка чуть выше, чтобы низ не упирался.
-        var minCard = 560 + _bottom.Height;
+        var minCard = 640 + _bottom.Height + _charges.Height;
         if (_card.Height < minCard)
             _card.Height = minCard;
     }

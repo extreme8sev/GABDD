@@ -18,8 +18,10 @@ public sealed class SteamApiClient : IDisposable
     private readonly string _apiKey;
     private readonly string _genreCacheDir;
     private readonly string _tagCacheDir;
+    private readonly string _priceCacheDir;
     private readonly ConcurrentDictionary<int, IReadOnlyList<string>> _genreMemory = new();
     private readonly ConcurrentDictionary<int, IReadOnlyList<string>> _tagMemory = new();
+    private readonly ConcurrentDictionary<int, int?> _priceMemory = new();
 
     public SteamApiClient(string apiKey, string? cacheRoot = null)
     {
@@ -27,8 +29,10 @@ public sealed class SteamApiClient : IDisposable
         var root = cacheRoot ?? Path.Combine(AppContext.BaseDirectory, "cache");
         _genreCacheDir = Path.Combine(root, "genres");
         _tagCacheDir = Path.Combine(root, "tags");
+        _priceCacheDir = Path.Combine(root, "prices");
         Directory.CreateDirectory(_genreCacheDir);
         Directory.CreateDirectory(_tagCacheDir);
+        Directory.CreateDirectory(_priceCacheDir);
 
         _http = new HttpClient
         {
@@ -247,13 +251,11 @@ public sealed class SteamApiClient : IDisposable
                 await Task.Delay(1100, ct).ConfigureAwait(false);
             }
 
-            // Если Store пустой — подстрахуемся genre-строкой из SteamSpy (если уже в тег-кэше нет — ок).
-            if (genres.Count == 0 && tags.Count > 0)
-            {
-                // теги уже есть; жанры могут остаться пустыми — маппер опирается на теги
-            }
+            var (priceRub, priceCached) = await GetPriceRubAsync(game.AppId, ct).ConfigureAwait(false);
+            if (!priceCached)
+                await Task.Delay(400, ct).ConfigureAwait(false);
 
-            result.Add(game with { Genres = genres, Tags = tags });
+            result.Add(game with { Genres = genres, Tags = tags, StorePriceRub = priceRub });
 
             var done = result.Count;
             if (done % 25 == 0 || done == games.Count)
@@ -320,6 +322,171 @@ public sealed class SteamApiClient : IDisposable
         _tagMemory[appId] = tags;
         await File.WriteAllTextAsync(cachePath, JsonSerializer.Serialize(tags), ct).ConfigureAwait(false);
         return (tags, false);
+    }
+
+    private async Task<(int? PriceRub, bool FromCache)> GetPriceRubAsync(int appId, CancellationToken ct)
+    {
+        if (_priceMemory.TryGetValue(appId, out var mem))
+            return (mem, true);
+
+        var cachePath = Path.Combine(_priceCacheDir, $"{appId}.json");
+        if (File.Exists(cachePath))
+        {
+            try
+            {
+                var cached = await File.ReadAllTextAsync(cachePath, ct).ConfigureAwait(false);
+                var dto = JsonSerializer.Deserialize<PriceCacheDto>(cached, JsonOptions);
+                // null в кэше = прошлый провал Store; не считаем ответом, пробуем снова.
+                if (dto is { Rub: not null })
+                {
+                    _priceMemory[appId] = dto.Rub;
+                    return (dto.Rub, true);
+                }
+
+                File.Delete(cachePath);
+            }
+            catch
+            {
+                // повреждённый кэш
+            }
+        }
+
+        var price = await ResolvePriceRubAsync(appId, ct).ConfigureAwait(false);
+        _priceMemory[appId] = price;
+
+        // Кэшируем только уверенный ответ (включая free=0). null — не пишем, чтобы повторить позже.
+        if (price is not null)
+        {
+            await File.WriteAllTextAsync(
+                    cachePath,
+                    JsonSerializer.Serialize(new PriceCacheDto { Rub = price }, JsonOptions),
+                    ct)
+                .ConfigureAwait(false);
+        }
+
+        return (price, false);
+    }
+
+    /// <summary>Курс для шуточного чека: витрина US/SteamSpy → ₽.</summary>
+    private const double UsdToRub = 95.0;
+
+    private async Task<int?> ResolvePriceRubAsync(int appId, CancellationToken ct)
+    {
+        var ru = await FetchStorePriceRubAsync(appId, "ru", ct).ConfigureAwait(false);
+        if (ru is not null)
+            return ru;
+
+        await Task.Delay(300, ct).ConfigureAwait(false);
+        var us = await FetchStorePriceRubAsync(appId, "us", ct).ConfigureAwait(false);
+        if (us is int usRub and > 0)
+            return usRub; // уже сконвертировано внутри при currency USD
+        if (us is 0)
+            return 0;
+
+        await Task.Delay(300, ct).ConfigureAwait(false);
+        var spyCents = await FetchSteamSpyPriceUsdCentsAsync(appId, ct).ConfigureAwait(false);
+        if (spyCents is null)
+            return null;
+        if (spyCents <= 0)
+            return null; // у Spy 0 бывает и у платных (GTA) — не путаем с free
+
+        return Math.Max(1, (int)Math.Round(spyCents.Value / 100.0 * UsdToRub));
+    }
+
+    private async Task<int?> FetchStorePriceRubAsync(int appId, string cc, CancellationToken ct)
+    {
+        var url = $"https://store.steampowered.com/api/appdetails?appids={appId}&cc={cc}&l=english";
+        try
+        {
+            using var response = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                await Task.Delay(5000, ct).ConfigureAwait(false);
+                using var retry = await _http.GetAsync(url, ct).ConfigureAwait(false);
+                if (!retry.IsSuccessStatusCode)
+                    return null;
+                return await ParseStorePriceAsync(retry, appId, ct).ConfigureAwait(false);
+            }
+
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            return await ParseStorePriceAsync(response, appId, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            Console.WriteLine($"  цена app {appId} ({cc}): {ex.Message}");
+            return null;
+        }
+    }
+
+    private static async Task<int?> ParseStorePriceAsync(
+        HttpResponseMessage response,
+        int appId,
+        CancellationToken ct)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+
+        if (!doc.RootElement.TryGetProperty(appId.ToString(), out var appNode))
+            return null;
+
+        var envelope = appNode.Deserialize<StoreAppDetailsEnvelope>(JsonOptions);
+        if (envelope is not { Success: true, Data: { } data })
+            return null;
+
+        if (data.IsFree)
+            return 0;
+
+        if (data.PriceOverview is null)
+            return null;
+
+        var minor = Math.Max(data.PriceOverview.Initial, data.PriceOverview.Final);
+        if (minor <= 0)
+            return null;
+
+        var currency = data.PriceOverview.Currency ?? "";
+        if (currency.Equals("RUB", StringComparison.OrdinalIgnoreCase))
+            return minor / 100;
+
+        if (currency.Equals("USD", StringComparison.OrdinalIgnoreCase))
+            return Math.Max(1, (int)Math.Round(minor / 100.0 * UsdToRub));
+
+        // прочие валюты — грубо как USD-центы (лучше, чем пусто)
+        return Math.Max(1, (int)Math.Round(minor / 100.0 * UsdToRub));
+    }
+
+    private async Task<int?> FetchSteamSpyPriceUsdCentsAsync(int appId, CancellationToken ct)
+    {
+        var url = $"https://steamspy.com/api.php?request=appdetails&appid={appId}";
+        try
+        {
+            using var response = await _http.GetAsync(url, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+            if (!doc.RootElement.TryGetProperty("price", out var priceNode))
+                return null;
+
+            return priceNode.ValueKind switch
+            {
+                JsonValueKind.Number when priceNode.TryGetInt32(out var cents) => cents,
+                JsonValueKind.String when int.TryParse(priceNode.GetString(), out var parsed) => parsed,
+                _ => null,
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            Console.WriteLine($"  spy-цена app {appId}: {ex.Message}");
+            return null;
+        }
+    }
+
+    private sealed class PriceCacheDto
+    {
+        public int? Rub { get; set; }
     }
 
     private async Task<IReadOnlyList<string>> FetchStoreGenresAsync(int appId, CancellationToken ct)

@@ -125,8 +125,35 @@ public static class GenreMapper
         ]),
     ];
 
-    public static IReadOnlyCollection<CategoryCode> Map(OwnedGameInfo game) =>
-        Map(game.Name, game.Genres, game.Tags);
+    /// <summary>Жёсткий маппинг известных appid — не зависит от тегов/языка названия.</summary>
+    private static readonly Dictionary<int, CategoryCode[]> AppIdRules = new()
+    {
+        [570] = [CategoryCode.A],      // Dota 2
+        [730] = [CategoryCode.B],      // CS2
+        [440] = [CategoryCode.B],      // TF2
+        [578080] = [CategoryCode.B],   // PUBG
+        [1172470] = [CategoryCode.B],  // Apex
+        [359550] = [CategoryCode.B],   // Rainbow Six Siege
+        [1085660] = [CategoryCode.B],  // Destiny 2
+        [238960] = [CategoryCode.C],   // Path of Exile
+        [230410] = [CategoryCode.B],   // Warframe
+    };
+
+    public static IReadOnlyCollection<CategoryCode> Map(OwnedGameInfo game)
+    {
+        var set = new HashSet<CategoryCode>(Map(game.Name, game.Genres, game.Tags));
+        if (AppIdRules.TryGetValue(game.AppId, out var forced))
+        {
+            foreach (var code in forced)
+                set.Add(code);
+        }
+
+        // Dota 2: стратегия в Store не должна быть единственной меткой без МОБА.
+        if (game.AppId == 570 || NameMatches(game.Name, ["Dota"]))
+            set.Add(CategoryCode.A);
+
+        return set;
+    }
 
     public static IReadOnlyCollection<CategoryCode> Map(
         string name,

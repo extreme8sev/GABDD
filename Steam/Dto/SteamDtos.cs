@@ -143,11 +143,30 @@ internal sealed class StoreAppData
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
+    [JsonPropertyName("is_free")]
+    public bool IsFree { get; set; }
+
     [JsonPropertyName("genres")]
     public List<StoreGenreDto>? Genres { get; set; }
 
     [JsonPropertyName("categories")]
     public List<StoreCategoryDto>? Categories { get; set; }
+
+    [JsonPropertyName("price_overview")]
+    public StorePriceOverview? PriceOverview { get; set; }
+}
+
+internal sealed class StorePriceOverview
+{
+    [JsonPropertyName("currency")]
+    public string? Currency { get; set; }
+
+    /// <summary>Цена в минимальных единицах (копейки для RUB).</summary>
+    [JsonPropertyName("initial")]
+    public int Initial { get; set; }
+
+    [JsonPropertyName("final")]
+    public int Final { get; set; }
 }
 
 internal sealed class StoreGenreDto

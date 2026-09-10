@@ -142,7 +142,7 @@ internal sealed class FrontLicensePanel : UserControl
         AddField("8. ГРУППА КРОВИ", 200);
         AddField("9. ПАРК СРЕДСТВ", 200);
         AddField("10. ПРОБЕГ ОБЩИЙ", 220);
-        AddField("11. ВАС-УЧЁТ", 180);
+        AddField("11. VAC-УЧЁТ", 180);
 
         var marksPanel = new Panel { Dock = DockStyle.Bottom, Height = 58, Padding = new Padding(4, 4, 4, 0) };
         var marksCap = new Label
@@ -240,7 +240,7 @@ internal sealed class FrontLicensePanel : UserControl
         Set("8. ГРУППА КРОВИ", license.BloodType);
         Set("9. ПАРК СРЕДСТВ", $"{license.FleetSize} ед. (без запуска: {license.NeverPlayedCount})");
         Set("10. ПРОБЕГ ОБЩИЙ", $"{license.TotalHours:0.#} ч  ·  14 дн.: {license.HoursLast14Days:0.#} ч");
-        Set("11. ВАС-УЧЁТ", p.VacBanned ? $"состоит ({p.NumberOfVacBans} VAC)" : "не состоит");
+        Set("11. VAC-УЧЁТ", p.VacBanned ? $"состоит ({p.NumberOfVacBans})" : "не состоит");
         _marks.Text = license.SpecialMarks ?? "—";
 
         _categories.Controls.Clear();

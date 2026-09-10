@@ -75,21 +75,47 @@ public static class PlayActivity
             .ToList();
 
     /// <summary>
-    /// Часы по категории для характера/шуток: только недавно активные игры.
-    /// Если таких нет — мягкий fallback на lifetime (спящий аккаунт).
+    /// Часы по категории для характера: недавние игры полностью +
+    /// заметный lifetime (Дота на 3к ч год назад всё ещё «ты каточник»).
     /// </summary>
     public static double CategoryHoursForIdentity(
         IEnumerable<OwnedGameInfo> games,
         CategoryCode code,
         TimeSpan? window = null)
     {
-        var list = games.ToList();
-        var recent = list.Where(g => IsRecentlyActive(g, window)).ToList();
-        var source = recent.Count > 0 ? recent : list;
+        double sumHours = 0;
+        foreach (var game in games)
+        {
+            if (!GenreMapper.Map(game).Contains(code))
+                continue;
 
-        return source
-            .Where(g => GenreMapper.Map(g).Contains(code))
-            .Sum(g => g.PlaytimeForeverMinutes) / 60.0;
+            var hours = game.PlaytimeForeverMinutes / 60.0;
+            if (hours <= 0)
+                continue;
+
+            if (IsRecentlyActive(game, window))
+            {
+                sumHours += hours;
+                continue;
+            }
+
+            // Старый, но весомый пробег — не обнуляем (иначе 5к часов Доты = «0 МОБА»).
+            var days = game.LastPlayedUtc is DateTimeOffset last
+                ? Math.Max(0, (DateTimeOffset.UtcNow - last).TotalDays)
+                : 9999;
+
+            var weight = days switch
+            {
+                <= 180 => 0.9,
+                <= 365 => 0.75,
+                <= 730 => 0.55,
+                _ => hours >= 200 ? 0.4 : hours >= 50 ? 0.2 : 0.05,
+            };
+
+            sumHours += hours * weight;
+        }
+
+        return sumHours;
     }
 
     public static string? FormatLastPlayed(OwnedGameInfo game)
